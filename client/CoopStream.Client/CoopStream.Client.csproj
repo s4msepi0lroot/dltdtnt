@@ -17,7 +17,15 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <InvariantGlobalization>true</InvariantGlobalization>
+    <!--
+      ВАЖНО: должно быть false.
+      В режиме globalization-invariant WinForms падает с CultureNotFoundException
+      ("1049 (0x0419) is an invalid culture identifier") при переключении раскладки
+      клавиатуры, потому что InputLanguageChanged не может создать CultureInfo для
+      русской раскладки. Включение ICU добавляет ~30 МБ к self-contained сборке,
+      но это единственный корректный способ поддержать любые раскладки.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
 
 </Project>

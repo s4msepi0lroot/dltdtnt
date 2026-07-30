@@ -123,3 +123,64 @@ node -e "const n=require('net'),c=require('crypto');const k=c.randomBytes(16).to
   Сервер шлёт ping каждые 20 секунд и рвёт молчащие соединения сам.
 - Увеличьте `MAX_FRAME_KB`, если в логах видны разрывы из-за размера кадра
   (бывает на 4K с высоким качеством).
+
+## Ошибка `CultureNotFoundException: 1049 (0x0419) is an invalid culture identifier`
+
+Полный текст выглядит так:
+
+```
+System.Globalization.CultureNotFoundException: Only the invariant culture is
+supported in globalization-invariant mode. (Parameter 'culture')
+1049 (0x0419) is an invalid culture identifier
+   at System.Windows.Forms.InputLanguage.get_LanguageTag()
+   at System.Windows.Forms.InputLanguageChangedEventArgs..ctor(...)
+   at System.Windows.Forms.Control.WmInputLangChange(Message& m)
+```
+
+**Причина.** Сборка была собрана с `InvariantGlobalization=true`. В этом режиме
+.NET знает только инвариантную культуру. Как только Windows шлёт окну сообщение
+`WM_INPUTLANGCHANGE` (то есть вы переключили раскладку клавиатуры или система
+восстановила раскладку при разворачивании окна), WinForms пытается создать
+`CultureInfo` для 1049 — русской раскладки — и падает. Отсюда и «иногда при
+скрытии и открытии клиента»: сообщение приходит именно в этот момент.
+
+К сети это отношения не имеет: ошибка возникает в цикле сообщений окна, а не в
+`RelayClient`.
+
+**Исправление.** В `client/CoopStream.Client/CoopStream.Client.csproj` должно
+быть:
+
+```xml
+<InvariantGlobalization>false</InvariantGlobalization>
+```
+
+После этого пересоберите клиент (в GitHub Actions — просто запустите сборку
+заново). Готовый exe станет примерно на 30 МБ больше: в него попадёт библиотека
+ICU. Это нормально и обязательно, если вы хотите переключать раскладку при
+запущенном клиенте.
+
+Никогда не «чините» это через `<PredefinedCulturesOnly>false</PredefinedCulturesOnly>`
+без отключения инвариантного режима — падение просто переедет в другое место.
+
+## Резервный способ подключения
+
+Начиная с этой версии `RelayClient` пробует подключиться тремя способами
+подряд:
+
+1. обычный `ClientWebSocket` в обход системного прокси;
+2. **собственное рукопожатие на «голом» TCP-сокете** (`ConnectRawAsync`) —
+   минует стек `HttpClient` целиком и сам сверяет `Sec-WebSocket-Accept`;
+3. `ClientWebSocket` через системный прокси — на случай, когда прямой выход в
+   сеть закрыт.
+
+Если сработал способ 2, в лог пишется «использовано резервное подключение
+(прямой сокет)». Это значит, что штатный стек .NET у вас чем-то перехвачен
+(антивирус, LSP-провайдер, корпоративный агент), но работать это не мешает.
+
+Если и способ 2 сообщает «ответ на рукопожатие изменён по пути» — трафик
+действительно подменяется на уровне сети, и разбираться нужно с тем, что стоит
+между вами и сервером.
+
+Параллельные вызовы `ConnectAsync` теперь запрещены (`_connectLock`), а старый
+сокет, поток и `TcpClient` гарантированно закрываются в `CleanupSocket()` —
+раньше при быстром «свернуть/развернуть» могли остаться висящие соединения.

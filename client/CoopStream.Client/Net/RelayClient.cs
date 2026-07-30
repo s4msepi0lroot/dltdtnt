@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http;
+using System.Net.Security;
+using System.Net.Sockets;
 using System.Net.WebSockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -13,9 +16,14 @@ namespace CoopStream.Client.Net;
 /// </summary>
 public sealed class RelayClient : IDisposable
 {
-    private ClientWebSocket _ws;
+    private const string WsGuid = "258EAFA5-E914-47DA-95CA-5AB0DC85B11F";
+
+    private WebSocket _ws;
+    private Stream _rawStream;
+    private TcpClient _tcp;
     private CancellationTokenSource _cts;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
+    private readonly SemaphoreSlim _connectLock = new(1, 1);
 
     /// <summary>Пришло управляющее JSON-сообщение.</summary>
     public event Action<JsonElement> OnJson;
@@ -51,34 +59,152 @@ public sealed class RelayClient : IDisposable
         return ws;
     }
 
+    /// <summary>
+    /// Подключается к relay-серверу. Пробует три способа по очереди:
+    ///   1) обычный ClientWebSocket в обход системного прокси;
+    ///   2) собственное рукопожатие на «голом» TCP-сокете — минует весь стек
+    ///      HttpClient, который и выдаёт ошибку "The 'Sec-WebSocket-Accept'
+    ///      header value ... is invalid", если рукопожатие кто-то трогает
+    ///      (фильтр антивируса, LSP-провайдер, повторное использование
+    ///      соединения после сворачивания окна);
+    ///   3) ClientWebSocket через системный прокси — если прямой выход закрыт.
+    /// Вызовы сериализованы: параллельные попытки подключения запрещены.
+    /// </summary>
     public async Task ConnectAsync(string url, CancellationToken ct = default)
     {
-        Close("reconnect");
-        var uri = NormalizeUrl(url);
-        Exception firstError = null;
-
-        // Сначала напрямую, затем (если не вышло) через системный прокси.
-        foreach (var bypassProxy in new[] { true, false })
+        await _connectLock.WaitAsync(ct);
+        try
         {
-            try
+            Close("reconnect");
+            var uri = NormalizeUrl(url);
+            Exception firstError = null;
+            ConnectNote = null;
+
+            for (var attempt = 1; attempt <= 3; attempt++)
             {
-                _ws = CreateSocket(bypassProxy);
-                _cts = new CancellationTokenSource();
-                await _ws.ConnectAsync(uri, ct);
-                ConnectNote = bypassProxy ? null : "подключение прошло через системный прокси";
-                _ = Task.Run(() => ReceiveLoopAsync(_cts.Token));
-                return;
+                try
+                {
+                    _cts = new CancellationTokenSource();
+                    if (attempt == 2)
+                    {
+                        _ws = await ConnectRawAsync(uri, ct);
+                        ConnectNote = "использовано резервное подключение (прямой сокет)";
+                    }
+                    else
+                    {
+                        var ws = CreateSocket(bypassProxy: attempt == 1);
+                        await ws.ConnectAsync(uri, ct);
+                        _ws = ws;
+                        ConnectNote = attempt == 3 ? "подключение прошло через системный прокси" : null;
+                    }
+
+                    var token = _cts.Token;
+                    _ = Task.Run(() => ReceiveLoopAsync(token));
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    firstError ??= ex;
+                    CleanupSocket();
+                    if (ct.IsCancellationRequested) throw;
+                }
             }
-            catch (Exception ex)
-            {
-                firstError ??= ex;
-                try { _ws?.Dispose(); } catch { }
-                _ws = null;
-                if (ct.IsCancellationRequested) throw;
-            }
+
+            throw new IOException(await DescribeErrorAsync(firstError, uri), firstError);
+        }
+        finally
+        {
+            _connectLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Резервный путь подключения: TCP-соединение, рукопожатие вручную и
+    /// WebSocket поверх готового потока. Заголовок Sec-WebSocket-Accept
+    /// проверяем сами, поэтому точно знаем, подменил ли его кто-то по дороге.
+    /// </summary>
+    private async Task<WebSocket> ConnectRawAsync(Uri uri, CancellationToken ct)
+    {
+        var secure = string.Equals(uri.Scheme, "wss", StringComparison.OrdinalIgnoreCase);
+        var port = uri.IsDefaultPort ? (secure ? 443 : 80) : uri.Port;
+
+        var tcp = new TcpClient { NoDelay = true };
+        await tcp.ConnectAsync(uri.Host, port, ct);
+
+        Stream stream = tcp.GetStream();
+        if (secure)
+        {
+            var ssl = new SslStream(stream, leaveInnerStreamOpen: false);
+            await ssl.AuthenticateAsClientAsync(
+                new SslClientAuthenticationOptions { TargetHost = uri.Host }, ct);
+            stream = ssl;
         }
 
-        throw new IOException(await DescribeErrorAsync(firstError, uri), firstError);
+        var key = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
+        var hostHeader = uri.IsDefaultPort ? uri.Host : uri.Host + ":" + port;
+        var request =
+            "GET " + uri.PathAndQuery + " HTTP/1.1\r\n" +
+            "Host: " + hostHeader + "\r\n" +
+            "Upgrade: websocket\r\n" +
+            "Connection: Upgrade\r\n" +
+            "Sec-WebSocket-Key: " + key + "\r\n" +
+            "Sec-WebSocket-Version: 13\r\n" +
+            "User-Agent: CoopStream/1.0\r\n\r\n";
+
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(request), ct);
+        await stream.FlushAsync(ct);
+
+        var head = await ReadHandshakeHeadAsync(stream, ct);
+        if (!head.StartsWith("HTTP/1.1 101", StringComparison.Ordinal))
+        {
+            tcp.Dispose();
+            throw new IOException("сервер не принял рукопожатие: " + head.Split('\r')[0]);
+        }
+
+        var expected = Convert.ToBase64String(SHA1.HashData(Encoding.ASCII.GetBytes(key + WsGuid)));
+        if (head.IndexOf(expected, StringComparison.Ordinal) < 0)
+        {
+            tcp.Dispose();
+            throw new IOException("ответ на рукопожатие изменён по пути (Sec-WebSocket-Accept не совпал)");
+        }
+
+        _rawStream = stream;
+        _tcp = tcp;
+        return WebSocket.CreateFromStream(stream, new WebSocketCreationOptions
+        {
+            IsServer = false,
+            KeepAliveInterval = TimeSpan.FromSeconds(15),
+        });
+    }
+
+    /// <summary>
+    /// Читает заголовки ответа побайтно — так мы гарантированно не проглотим
+    /// первые байты WebSocket-кадров, идущие сразу за пустой строкой.
+    /// </summary>
+    private static async Task<string> ReadHandshakeHeadAsync(Stream stream, CancellationToken ct)
+    {
+        var sb = new StringBuilder();
+        var one = new byte[1];
+        while (sb.Length < 8192)
+        {
+            var read = await stream.ReadAsync(one, ct);
+            if (read == 0) throw new IOException("соединение закрыто во время рукопожатия");
+            sb.Append((char)one[0]);
+            if (sb.Length >= 4 && sb[^1] == '\n' && sb[^2] == '\r' && sb[^3] == '\n' && sb[^4] == '\r')
+                return sb.ToString();
+        }
+        throw new IOException("слишком длинный ответ на рукопожатие");
+    }
+
+    /// <summary>Закрывает и обнуляет всё, что связано с текущим соединением.</summary>
+    private void CleanupSocket()
+    {
+        try { _ws?.Dispose(); } catch { }
+        try { _rawStream?.Dispose(); } catch { }
+        try { _tcp?.Dispose(); } catch { }
+        _ws = null;
+        _rawStream = null;
+        _tcp = null;
     }
 
     /// <summary>Приводит адрес к виду ws(s)://host[:port]/ws.</summary>
@@ -230,8 +356,7 @@ public sealed class RelayClient : IDisposable
                 _ws.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, reason, CancellationToken.None).Wait(500);
         }
         catch { }
-        _ws?.Dispose();
-        _ws = null;
+        CleanupSocket();
     }
 
     public void Dispose() => Close("dispose");
