@@ -1,9 +1,16 @@
 'use strict'
 /**
- * CoopStream Relay Server
- * -----------------------
- * Лёгкий сервер-ретранслятор (без P2P): авторизация, лобби,
- * пересылка видеокадров (host -> guest) и ввода с клавиатуры (guest -> host).
+ * DeltaDotNet Relay Server
+ * ------------------------
+ * Лёгкий сервер-ретранслятор (без P2P) для совместной игры в Deltarune:
+ * авторизация, лобби на 2-4 игроков, пересылка видеокадров (хост -> всем)
+ * и действий управления (гости -> хосту).
+ *
+ * ВАЖНО про управление: сервер ничего не знает про конкретные клавиши.
+ * Клиент превращает нажатую клавишу в логическое действие (Up, Confirm, ...),
+ * а хост обратно превращает действие в ту клавишу, которую ждёт игра для
+ * этого игрока. Поэтому каждый участник может назначить себе любые удобные
+ * кнопки, никак не мешая остальным.
  *
  * Зависимости: нет (только стандартная библиотека Node.js >= 18).
  *
@@ -19,13 +26,14 @@ const path = require('path')
 const { attach } = require('./ws')
 const { UserStore } = require('./store')
 const { TokenService } = require('./auth')
-const { LobbyManager } = require('./lobby')
+const { LobbyManager, normalizeMaxPlayers, MIN_PLAYERS, MAX_PLAYERS } = require('./lobby')
 
 const PORT = Number(process.env.PORT || 8080)
 const AUTH_SECRET = process.env.AUTH_SECRET || 'dev-insecure-secret-change-me'
 const DATA_FILE = process.env.DATA_FILE || path.join(process.cwd(), 'data', 'users.json')
 const ALLOW_REGISTER = process.env.ALLOW_REGISTER !== '0'
 const MAX_FRAME_KB = Number(process.env.MAX_FRAME_KB || 2048)
+const MAX_BUFFERED = 4 * 1024 * 1024
 
 const store = new UserStore(DATA_FILE)
 const tokens = new TokenService(AUTH_SECRET)
@@ -35,6 +43,23 @@ if (AUTH_SECRET === 'dev-insecure-secret-change-me') {
   console.warn('[warn] AUTH_SECRET не задан — используется небезопасное значение по умолчанию')
 }
 
+/**
+ * Список логических действий. Это единственное, что сервер валидирует
+ * в сообщениях ввода. Какая физическая клавиша соответствует действию —
+ * личное дело каждого клиента.
+ */
+const ACTIONS = new Set([
+  'Up',
+  'Down',
+  'Left',
+  'Right',
+  'Confirm',
+  'Cancel',
+  'Menu',
+  'Extra1',
+  'Extra2',
+])
+
 // ---------------------------------------------------------------- HTTP часть
 const server = http.createServer((req, res) => {
   if (req.url === '/health' || req.url === '/') {
@@ -42,11 +67,12 @@ const server = http.createServer((req, res) => {
     res.end(
       JSON.stringify({
         ok: true,
-        service: 'coopstream-relay',
+        service: 'deltadotnet-relay',
         uptime: Math.round(process.uptime()),
         lobbies: lobbies.lobbies.size,
         users: store.users.size,
         allowRegister: ALLOW_REGISTER,
+        maxPlayers: MAX_PLAYERS,
       })
     )
     return
@@ -68,19 +94,21 @@ function requireAuth(conn) {
   return true
 }
 
-// Клавиши, разрешённые каждой роли. Сервер фильтрует ввод ещё до клиента.
-const ALLOWED_KEYS = {
-  P1: new Set(['W', 'A', 'S', 'D', 'Z', 'X', 'P', 'C', 'LCtrl', 'RCtrl', 'LShift', 'RShift']),
-  P2: new Set(['Up', 'Down', 'Left', 'Right', 'Enter', 'NumEnter', 'C', 'LCtrl', 'RCtrl', 'LShift', 'RShift']),
-}
-
 // ------------------------------------------------------------- WebSocket часть
 attach(server, {
   path: '/ws',
   maxPayload: MAX_FRAME_KB * 1024,
   onConnection(conn) {
-    conn.ctx = { login: null, lobbyCode: null, role: null }
-    conn.sendJson({ t: 'hello', server: 'coopstream-relay', version: 1, allowRegister: ALLOW_REGISTER })
+    conn.ctx = { login: null, lobbyCode: null, role: null, isHost: false }
+    conn.sendJson({
+      t: 'hello',
+      server: 'deltadotnet-relay',
+      version: 2,
+      allowRegister: ALLOW_REGISTER,
+      minPlayers: MIN_PLAYERS,
+      maxPlayers: MAX_PLAYERS,
+      actions: [...ACTIONS],
+    })
 
     conn.on('message', (msg) => {
       if (msg.type === 'binary') return onBinary(conn, msg.data)
@@ -152,37 +180,45 @@ function onJson(conn, m) {
 
     case 'create_lobby': {
       if (!requireAuth(conn)) return
+      const maxPlayers = normalizeMaxPlayers(m.maxPlayers === undefined ? 2 : m.maxPlayers)
+      if (maxPlayers === null)
+        return fail(conn, 'bad_max_players', `Игроков может быть от ${MIN_PLAYERS} до ${MAX_PLAYERS}`)
       if (conn.ctx.lobbyCode) lobbies.detach(conn)
-      const lobby = lobbies.create(conn, String(m.name || `${conn.ctx.login}'s game`).slice(0, 40), m.hostRole)
+      const name = String(m.name || `Игра ${conn.ctx.login}`).slice(0, 40)
+      const lobby = lobbies.create(conn, name, maxPlayers)
       conn.ctx.lobbyCode = lobby.code
-      conn.ctx.role = lobby.hostRole
+      conn.ctx.role = 'P1'
       conn.ctx.isHost = true
-      console.log(`[lobby] created ${lobby.code} by ${conn.ctx.login}`)
-      return conn.sendJson({ t: 'lobby_created', lobby: lobby.toPublic(), you: 'host', role: lobby.hostRole })
+      console.log(`[lobby] created ${lobby.code} by ${conn.ctx.login} (${maxPlayers} игроков)`)
+      return conn.sendJson({ t: 'lobby_created', lobby: lobby.toPublic(), you: 'host', role: 'P1' })
     }
 
     case 'join_lobby': {
       if (!requireAuth(conn)) return
       const lobby = lobbies.get(m.code)
       if (!lobby) return fail(conn, 'no_lobby', 'Лобби с таким кодом не найдено')
-      if (lobby.isFull) return fail(conn, 'lobby_full', 'В лобби уже два игрока')
       if (lobby.host === conn) return fail(conn, 'self_join', 'Вы уже хост этого лобби')
+      if (lobby.isFull) return fail(conn, 'lobby_full', 'В лобби уже нет свободных мест')
       if (conn.ctx.lobbyCode) lobbies.detach(conn)
-      lobby.guest = conn
+
+      const role = lobby.addGuest(conn)
+      if (!role) return fail(conn, 'lobby_full', 'В лобби уже нет свободных мест')
       conn.ctx.lobbyCode = lobby.code
-      conn.ctx.role = lobby.guestRole
+      conn.ctx.role = role
       conn.ctx.isHost = false
-      console.log(`[lobby] ${conn.ctx.login} joined ${lobby.code}`)
-      conn.sendJson({ t: 'lobby_joined', lobby: lobby.toPublic(), you: 'guest', role: lobby.guestRole })
-      lobby.host.sendJson({ t: 'peer_joined', lobby: lobby.toPublic(), login: conn.ctx.login, role: lobby.guestRole })
+      console.log(`[lobby] ${conn.ctx.login} joined ${lobby.code} as ${role}`)
+
+      conn.sendJson({ t: 'lobby_joined', lobby: lobby.toPublic(), you: 'guest', role })
+      lobby.broadcast(
+        { t: 'peer_joined', lobby: lobby.toPublic(), login: conn.ctx.login, role },
+        conn
+      )
       return
     }
 
     case 'leave_lobby': {
       if (!requireAuth(conn)) return
       lobbies.detach(conn)
-      conn.ctx.lobbyCode = null
-      conn.ctx.role = null
       return conn.sendJson({ t: 'lobby_left' })
     }
 
@@ -190,8 +226,8 @@ function onJson(conn, m) {
       if (!requireAuth(conn)) return
       const lobby = lobbies.get(conn.ctx.lobbyCode)
       if (!lobby || lobby.host !== conn) return fail(conn, 'not_host', 'Запускать игру может только хост')
-      if (!lobby.guest) return fail(conn, 'no_guest', 'Второй игрок ещё не подключился')
-      lobby.started = true
+      if (lobby.playerCount < 2) return fail(conn, 'no_guest', 'Никто ещё не подключился')
+      lobby.running = true
       console.log(`[lobby] start ${lobby.code}`)
       lobby.broadcast({ t: 'started', lobby: lobby.toPublic() })
       return
@@ -201,7 +237,7 @@ function onJson(conn, m) {
       if (!requireAuth(conn)) return
       const lobby = lobbies.get(conn.ctx.lobbyCode)
       if (!lobby || lobby.host !== conn) return fail(conn, 'not_host', 'Остановить игру может только хост')
-      lobby.started = false
+      lobby.running = false
       lobby.broadcast({ t: 'stopped' })
       return
     }
@@ -210,68 +246,86 @@ function onJson(conn, m) {
     case 'input': {
       if (!requireAuth(conn)) return
       const lobby = lobbies.get(conn.ctx.lobbyCode)
-      if (!lobby || !lobby.started) return
-      const target = lobby.other(conn)
-      if (!target) return
-      // Ввод имеет смысл только от гостя к хосту (игра запущена на хосте).
-      if (conn !== lobby.guest) return
-      const key = String(m.key || '')
-      if (!ALLOWED_KEYS[lobby.guestRole].has(key)) {
-        return fail(conn, 'key_not_allowed', `Клавиша ${key} не разрешена для роли ${lobby.guestRole}`)
-      }
-      lobby.stats.inputs++
-      target.sendJson({ t: 'input', key, down: !!m.down, role: lobby.guestRole, ts: m.ts || Date.now() })
+      if (!lobby) return fail(conn, 'no_lobby', 'Вы не в лобби')
+      if (lobby.host === conn) return fail(conn, 'not_guest', 'Хост играет напрямую, его ввод не пересылается')
+
+      const action = String(m.action || '')
+      if (!ACTIONS.has(action)) return fail(conn, 'bad_action', 'Неизвестное действие: ' + action)
+
+      lobby.host.sendJson({
+        t: 'input',
+        role: conn.ctx.role,
+        login: conn.ctx.login,
+        action,
+        down: !!m.down,
+      })
       return
     }
 
     case 'release_all': {
+      if (!requireAuth(conn)) return
       const lobby = lobbies.get(conn.ctx.lobbyCode)
-      if (!lobby) return
-      const target = lobby.other(conn)
-      target?.sendJson({ t: 'release_all', role: conn.ctx.role })
+      if (!lobby || lobby.host === conn) return
+      lobby.host.sendJson({ t: 'release_all', role: conn.ctx.role, login: conn.ctx.login })
       return
     }
 
+    // ------------------------------------------------------------- прочее
     case 'chat': {
       if (!requireAuth(conn)) return
       const lobby = lobbies.get(conn.ctx.lobbyCode)
-      if (!lobby) return
-      lobby.broadcast({ t: 'chat', from: conn.ctx.login, text: String(m.text || '').slice(0, 500) })
+      if (!lobby) return fail(conn, 'no_lobby', 'Вы не в лобби')
+      const text = String(m.text || '').slice(0, 300)
+      if (!text) return
+      lobby.broadcast({ t: 'chat', from: conn.ctx.login, role: conn.ctx.role, text })
       return
     }
 
     case 'ping':
-      return conn.sendJson({ t: 'pong', ts: m.ts || Date.now() })
+      return conn.sendJson({ t: 'pong', time: Date.now() })
 
     case 'stats': {
+      if (!requireAuth(conn)) return
       const lobby = lobbies.get(conn.ctx.lobbyCode)
-      return conn.sendJson({ t: 'stats', stats: lobby ? lobby.stats : null })
+      if (!lobby) return fail(conn, 'no_lobby', 'Вы не в лобби')
+      return conn.sendJson({
+        t: 'stats',
+        stats: {
+          frames: lobby.frames,
+          bytes: lobby.bytes,
+          players: lobby.playerCount,
+          maxPlayers: lobby.maxPlayers,
+          running: lobby.running,
+        },
+      })
     }
 
     default:
-      return fail(conn, 'unknown_type', `Неизвестный тип сообщения: ${m.t}`)
+      return fail(conn, 'unknown_type', 'Неизвестный тип сообщения: ' + m.t)
   }
 }
 
 /**
- * Бинарные сообщения = видеокадры от хоста. Сервер просто пересылает их гостю.
- * Формат пакета описан в docs/PROTOCOL.md.
+ * Бинарные сообщения — это видеокадры. Шлёт их только хост, получают
+ * все остальные. Если конкретный зритель не успевает вычитывать — кадр для
+ * него пропускается, чтобы не растить задержку у остальных.
  */
 function onBinary(conn, data) {
   const lobby = lobbies.get(conn.ctx.lobbyCode)
-  if (!lobby || !lobby.started) return
-  if (conn !== lobby.host) return // транслирует только хост
-  const guest = lobby.guest
-  if (!guest || guest.closed) return
-  // Backpressure: если гость не успевает — дропаем кадр, а не копим задержку.
-  if (guest.bufferedAmount > 4 * 1024 * 1024) return
-  lobby.stats.frames++
-  lobby.stats.bytes += data.length
-  guest.sendBinary(data)
+  if (!lobby || lobby.host !== conn) return
+
+  lobby.frames++
+  lobby.bytes += data.length
+
+  for (const guest of lobby.guests) {
+    if (guest.bufferedAmount > MAX_BUFFERED) continue
+    guest.sendBinary(data)
+  }
 }
 
 server.listen(PORT, () => {
-  console.log(`[coopstream] relay слушает :${PORT} (ws путь /ws, здоровье /health)`)
+  console.log(`[deltadotnet] relay слушает порт ${PORT}`)
+  console.log(`[deltadotnet] health: http://127.0.0.1:${PORT}/health`)
 })
 
-module.exports = { server, store, tokens, lobbies, ALLOWED_KEYS }
+module.exports = { server, store, tokens, lobbies, ACTIONS }

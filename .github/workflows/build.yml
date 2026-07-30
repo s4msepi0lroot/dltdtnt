@@ -19,22 +19,22 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Restore
-        run: dotnet restore client/CoopStream.Client/CoopStream.Client.csproj
+        run: dotnet restore client/DeltaDotNet.Client/DeltaDotNet.Client.csproj
 
       - name: Build
-        run: dotnet build client/CoopStream.Client/CoopStream.Client.csproj -c Release --no-restore
+        run: dotnet build client/DeltaDotNet.Client/DeltaDotNet.Client.csproj -c Release --no-restore
 
       - name: Publish (single exe, win-x64)
         run: >
-          dotnet publish client/CoopStream.Client/CoopStream.Client.csproj
+          dotnet publish client/DeltaDotNet.Client/DeltaDotNet.Client.csproj
           -c Release -r win-x64 --self-contained true
           -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
           -o publish/client
 
       - uses: actions/upload-artifact@v4
         with:
-          name: CoopStream-client-win-x64
-          path: publish/client/CoopStream.exe
+          name: DeltaDotNet-client-win-x64
+          path: publish/client/DeltaDotNet.exe
           if-no-files-found: error
 
   server:
@@ -60,7 +60,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: CoopStream-server
+          name: DeltaDotNet-server
           path: publish/server
           if-no-files-found: error
 
@@ -74,22 +74,22 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: CoopStream-client-win-x64
+          name: DeltaDotNet-client-win-x64
           path: dist/client
 
       - uses: actions/download-artifact@v4
         with:
-          name: CoopStream-server
+          name: DeltaDotNet-server
           path: dist/server
 
       - name: Архивы
         run: |
           cd dist
-          zip -r CoopStream-client-win-x64.zip client
-          zip -r CoopStream-server.zip server
+          zip -r DeltaDotNet-client-win-x64.zip client
+          zip -r DeltaDotNet-server.zip server
 
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/CoopStream-client-win-x64.zip
-            dist/CoopStream-server.zip
+            dist/DeltaDotNet-client-win-x64.zip
+            dist/DeltaDotNet-server.zip

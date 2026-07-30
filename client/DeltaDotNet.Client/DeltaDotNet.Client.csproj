@@ -6,8 +6,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>CoopStream</AssemblyName>
-    <RootNamespace>CoopStream.Client</RootNamespace>
+    <AssemblyName>DeltaDotNet</AssemblyName>
+    <RootNamespace>DeltaDotNet.Client</RootNamespace>
     <Version>1.0.0</Version>
     <!-- Сборка в один exe без установленного .NET у пользователя -->
     <PublishSingleFile>true</PublishSingleFile>

@@ -1,202 +1,163 @@
-# Разбор кода
+# Разбор кода DeltaDotNet
 
-Документ описывает каждый файл проекта: что внутри, какие функции он экспортирует и где его править.
+Файл поясняет назначение каждого исходника и его ключевые типы.
 
----
+```
+deltadotnet/
+├─ server/
+│  ├─ src/{index,ws,auth,store,lobby}.js
+│  ├─ e2e-test.js
+│  ├─ Dockerfile, package.json, .env.example
+├─ client/DeltaDotNet.Client/
+│  ├─ Program.cs, AppConfig.cs, DeltaDotNet.Client.csproj
+│  ├─ Ui/DeltaTheme.cs
+│  ├─ Forms/{MainForm,HostForm,ViewerForm,BindingsForm}.cs
+│  ├─ Net/RelayClient.cs
+│  ├─ Capture/ScreenCapturer.cs
+│  └─ Input/{KeyMap,Bindings,InputInjector}.cs
+├─ docs/, .github/workflows/build.yml
+```
 
-# Сервер (`server/`)
+## Сервер
 
-Ни одной внешней зависимости — только встроенные модули Node (`http`, `crypto`, `fs`, `path`).
+### `server/src/ws.js`
+Реализация WebSocket с нуля по RFC 6455, чтобы обойтись без npm-зависимостей.
 
-## `src/ws.js` — WebSocket с нуля (RFC 6455)
+- `attach(server, { path, maxPayload, onConnection })` — перехват `upgrade`,
+  вычисление `Sec-WebSocket-Accept` = `base64(sha1(key + GUID))`.
+- `encodeFrame(op, payload, { mask })` — сборка кадра (используется и в тесте).
+- `WsConnection` — `sendJson`, `sendBinary`, `bufferedAmount`, `ctx`,
+  события `message` / `close` / `error`, сборка фрагментов, ping каждые 20 с.
 
-Почему свой: чтобы сервер запускался без `npm install` на любом хостинге.
+### `server/src/store.js`
+`UserStore` — хранилище пользователей в JSON-файле: `create`, `verify`, `has`.
+Пароль — scrypt с солью, сравнение `timingSafeEqual`. Запись атомарная
+(временный файл + `rename`).
 
-| Экспорт | Описание |
-|---|---|
-| `attach(server, { path, onConnection, maxPayload, heartbeatMs })` | вешает обработчик `upgrade` на HTTP-сервер, делает рукопожатие (SHA-1 + GUID `258EAFA5-…`), запускает heartbeat |
-| `encodeFrame(opcode, payload, { mask, fin })` | собирает WS-кадр (используется и тестом как клиент) |
-| `WsConnection` | обёртка над TCP-сокетом |
-| `OP` | `{ CONT:0x0, TEXT:0x1, BINARY:0x2, CLOSE:0x8, PING:0x9, PONG:0xa }` |
+### `server/src/auth.js`
+`TokenService.sign(login)` и `.verify(token)` — подписанные HMAC-SHA256 токены
+со сроком жизни. Секрет — `AUTH_SECRET`.
 
-`WsConnection`:
-- методы `sendText`, `sendJson`, `sendBinary`, `ping`, `close`;
-- свойства `bufferedAmount` (сколько байт ждёт отправки), `ctx` (произвольные данные сессии), `isAlive`;
-- события `message` (`{ type: 'text'|'binary', data }`), `close`, `error`;
-- сам собирает фрагментированные кадры (`CONT`), снимает маску клиента, отвечает на `PING`;
-- закрывает соединение при превышении `maxPayload`;
-- обрабатывает `end` и `close` сокета — важно для мгновенного `peer_left` при обрыве.
+### `server/src/lobby.js`
+Модель лобби на 2–4 игроков.
 
-## `src/store.js` — аккаунты
+| Экспорт | Смысл |
+| --- | --- |
+| `ROLES` | `['P1','P2','P3','P4']` |
+| `MIN_PLAYERS` / `MAX_PLAYERS` | 2 / 4 |
+| `normalizeMaxPlayers(v)` | проверка размера лобби, `null` при ошибке |
+| `randomCode()` | код из 6 символов без похожих букв (без O, I, 0, 1) |
+| `Lobby` | слоты игроков, `toPublic()`, `broadcast()`, `detach()` |
+| `LobbyManager` | создание, поиск по коду, удаление, список |
 
-Класс `UserStore(filePath)`:
+`detach()` различает уход гостя (`peer_left`, слот освобождается) и уход хоста
+(`lobby_closed` всем, лобби удаляется).
 
-| Метод | Описание |
-|---|---|
-| `has(login)` | есть ли пользователь |
-| `create(login, password)` | создать; бросает `Error('user_exists')` |
-| `verify(login, password)` | проверка пароля через `timingSafeEqual` |
-| `UserStore.hashPassword(password, salt?)` | `scrypt`, keylen 32 |
+### `server/src/index.js`
+Точка входа: HTTP `/health` и WebSocket `/ws`, вся маршрутизация сообщений
+протокола v2. Проверки: авторизация, размер лобби, роль отправителя,
+допустимость действия (`ACTIONS`). Бинарные кадры рассылаются всем гостям
+с пропуском перегруженных соединений.
 
-Хранение — обычный JSON-файл, запись атомарная (`.tmp` + `rename`), чтобы не потерять базу при падении.
-Формат записи: `{ login, salt, hash, createdAt }`. Пароли в открытом виде не хранятся нигде.
+### `server/e2e-test.js`
+Сквозной тест без фреймворков: поднимает сервер и играет полный сценарий
+на сырых сокетах — рукопожатие, авторизация, лобби на троих, видео, действия,
+обрывы. Запускается в CI перед сборкой клиента.
 
-## `src/auth.js` — токены
+## Клиент
 
-`TokenService(secret, ttlSeconds = 7*24*3600)`:
-- `sign(login)` → `base64url(payload) + '.' + base64url(HMAC-SHA256)`;
-- `verify(token)` → `{ login, exp }` или `null` (подпись сравнивается `timingSafeEqual`, срок проверяется).
+### `Program.cs`
+Включает DPI-режим `PerMonitorV2`, читает конфиг и открывает `MainForm`,
+после показа окна вызывает `TryAutoLoginAsync()`.
 
-Похоже на JWT, но без лишних сущностей. Смена `AUTH_SECRET` мгновенно аннулирует все токены.
+### `AppConfig.cs`
+Настройки в `%APPDATA%\DeltaDotNet\config.json`.
 
-## `src/lobby.js` — лобби
+| Поле | Назначение |
+| --- | --- |
+| `ServerUrl`, `Login`, `Token` | подключение и автовход |
+| `Fps`, `JpegQuality`, `MaxWidth` | качество трансляции |
+| `PlayerCount` | сколько игроков создавать в лобби (2–4) |
+| `MyBindings` | мои клавиши → действия |
+| `GameKeys` | для хоста: действия → клавиши игры, по ролям |
 
-- `randomCode(6)` — код из алфавита `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (без `I`, `O`, `0`, `1` — чтобы не путать при диктовке).
-- `Lobby`: `code`, `name`, `host`, `guest`, `hostRole`, `guestRole`, `running`;
-  методы `toPublic()`, `other(conn)`, `broadcast(msg)`, `isFull`, `stats`.
-- `LobbyManager`: `create()`, `get(code)`, `list()`, `remove(code)`, `detach(conn)`
-  (`detach` вызывается при любом разрыве и корректно разбирает оба случая — вышел хост или гость).
+`Normalized()` обрезает значения до допустимых диапазонов, чтобы испорченный
+файл не ломал запуск.
 
-Лобби хранятся только в памяти — это осознанное решение (сессии короткие).
+### `Ui/DeltaTheme.cs` (новый)
+Вся стилистика Deltarune в одном месте.
 
-## `src/index.js` — точка входа и маршрутизация
+- Палитра: чёрный фон, белые рамки и текст, жёлтый `#FFD500` для выбора,
+  красный для сердечка.
+- Подбор шрифта: ищет в системе Determination Mono, 8bitoperator, Pixel Operator,
+  Press Start 2P; если ничего нет — Consolas.
+- `ApplyForm`, `DrawFrame`, `DrawHeart` (пиксельное сердечко-курсор), `Title`, `Caption`.
+- Контролы: `DeltaButton`, `DeltaTextBox`, `DeltaListBox`, `DeltaPanel` — все с ручной
+  отрисовкой, без стандартного вида Windows.
 
-1. Читает ENV: `PORT`, `AUTH_SECRET`, `DATA_FILE`, `ALLOW_REGISTER`, `MAX_FRAME_KB`.
-   Если `AUTH_SECRET` не задан, в консоль печатается предупреждение.
-2. Поднимает HTTP: `/health`, `/`, `/stats`.
-3. `attach(server, { path: '/ws', ... })` и разбор сообщений.
-4. `ALLOWED_KEYS` — белый список клавиш по ролям (дублирует `KeyPolicy` клиента).
+### `Input/KeyMap.cs`
+Таблица физических клавиш.
 
-Обрабатываемые типы: `register`, `login`, `auth_token`, `ping`, `list_lobbies`, `create_lobby`,
-`join_lobby`, `leave_lobby`, `start`, `stop`, `input`, `release_all`, `chat`, `stats`.
-Полное описание — в [PROTOCOL.md](PROTOCOL.md).
+- `KeyDef(Scan, Extended, Title)` — аппаратный код и человеческое название.
+- `FromScan(scan, extended)` — обратный поиск для редактора управления.
+- `GameAction` — девять действий, их русские названия и `IsValid`.
 
-Бинарные кадры (`onBinary`): пропускаются только от хоста и только в активной сессии.
-Если `guest.bufferedAmount > MAX_BUFFERED` (4 МБ), кадр дропается — так трансляция не «уезжает» в минутную задержку.
+Работа идёт по scan-кодам, а не по символам — русская раскладка не мешает.
 
-Экспортирует `{ server, store, tokens, lobbies, ALLOWED_KEYS }` — удобно для тестов и встраивания.
+### `Input/Bindings.cs`
+Набор привязок «действие ↔ клавиша»: `ActionFor(key)`, индексатор по действию,
+`Default(role)` с заводскими раскладками P1–P4, `Clone`, `Describe`,
+`ToDictionary`/`FromDictionary` для сохранения в конфиг.
 
-## `e2e-test.js` — сквозной тест
+### `Input/InputInjector.cs`
+Синтез нажатий через `SendInput` со скан-кодами. Помнит удерживаемые
+клавиши и умеет `ReleaseAll()` — защита от «залипания» при обрыве связи.
+У хоста свой экземпляр на каждую роль.
 
-Запускает сервер в отдельном процессе (`PORT=18081`, временный `DATA_FILE`) и проверяет:
+### `Net/RelayClient.cs`
+Обёртка над WebSocket.
 
-1. **Авторизация** — две регистрации, неверный пароль (`bad_credentials`), действие без входа (`unauthorized`), вход по токену.
-2. **Лобби** — создание, список, вход, `peer_joined`.
-3. **Старт и видео** — `started` обоим, бинарный кадр доходит байт-в-байт.
-4. **Ввод** — `Left` от P2 доходит, `W` от P2 отклоняется (`key_not_allowed`), `release_all`, чат.
-5. **Отключение** — при обрыве гостя хост получает `peer_left`.
+- `ConnectAsync` — три попытки: штатный `ClientWebSocket`, затем **ручное
+  рукопожатие** `ConnectRawAsync` — обход ошибки `Sec-WebSocket-Accept`,
+  которую дают некоторые сетевые фильтры.
+- `NormalizeUrl` — принимает `http://`, `https://`, адрес без схемы и без `/ws`.
+- `ProbeHealthAsync` и `ConnectNote` — понятные сообщения об ошибках.
+- События `OnJson`, `OnBinary`, `OnClosed`.
 
-Запуск: `node server/e2e-test.js` (или `npm test` в `server/`). Этот же тест гоняется в CI.
+### `Capture/ScreenCapturer.cs`
+Захват экрана или окна (`BitBlt`), масштабирование, сжатие в JPEG и сборка
+заголовка из 17 байт. `TryParse` делает обратное на стороне гостя.
+`WindowList.Enumerate()` возвращает список видимых окон для выбора источника.
 
----
+### `Forms/MainForm.cs`
+Главное окно: панели «СЕРВЕР И ВХОД», «ЛОББИ», «АКТИВНЫЕ ИГРЫ».
+Здесь же кнопка-переключатель **ИГРОКОВ: 2→3→4** (уходит в `maxPlayers`
+при создании) и кнопка **МОЁ УПРАВЛЕНИЕ**.
 
-# Клиент (`client/CoopStream.Client/`)
+### `Forms/BindingsForm.cs` (новый)
+Редактор привязок. Нажатия перехватываются в `ProcessKeyPreview` на уровне
+сообщений Windows, scan-код берётся из `lParam`. При конфликте клавиша
+снимается со старого действия. Одна форма обслуживает и «мои клавиши», и
+«клавиши игры» у хоста.
 
-.NET 8, WinForms, только базовые библиотеки (`System.Net.WebSockets`, `System.Text.Json`, GDI+, Win32).
+### `Forms/HostForm.cs`
+Окно хоста: код лобби, выбор источника, старт/стоп, список игроков со
+свободными слотами, кнопки КЛАВИШИ P2/P3/P4 (активны по размеру лобби),
+журнал событий. Таймер по `Fps` гонит кадры, входящие `input` переводятся
+в `SendInput` через словарь `InputInjector` по ролям.
 
-## `CoopStream.Client.csproj`
+### `Forms/ViewerForm.cs`
+Окно гостя: отрисовка кадров с сохранением пропорций, перехват клавиш по
+scan-коду, отсечение автоповтора, отправка `input`, автоматический `release_all`
+при потере фокуса, вызов редактора управления по F2, строка состояния
+с числом кадров и задержкой.
 
-`net8.0-windows`, `UseWindowsForms=true`, `AssemblyName=CoopStream`, `RuntimeIdentifier=win-x64`,
-`PublishSingleFile`, `SelfContained`. На выходе — один `CoopStream.exe` без установки .NET.
+### `DeltaDotNet.Client.csproj`
+`net8.0-windows`, WinForms, сборка в один self-contained `DeltaDotNet.exe`.
+Важно: `<InvariantGlobalization>false</InvariantGlobalization>` — без этого
+смена раскладки в поле ввода роняет приложение (`CultureNotFoundException`).
 
-## `Program.cs`
+## Сборка
 
-`[STAThread]`, DPI-aware, глобальный перехват исключений, загрузка конфига, показ `MainForm`,
-попытка автовхода после `Shown`.
-
-## `AppConfig.cs`
-
-Настройки в `%APPDATA%\CoopStream\config.json`:
-`ServerUrl`, `Login`, `Token`, `Fps`, `JpegQuality`, `MaxWidth`, `HostRole`.
-Методы `Load()` и `Save()` никогда не бросают исключений — битый конфиг просто заменяется дефолтным.
-
-## `Net/RelayClient.cs`
-
-Обёртка над `ClientWebSocket`.
-
-| Член | Описание |
-|---|---|
-| `ConnectAsync(url)` | подключение и запуск цикла чтения |
-| `SendJsonAsync(object)` | JSON-сообщение |
-| `SendBinaryAsync(byte[])` | бинарный кадр |
-| `OnJson`, `OnBinary`, `OnClosed` | события (вызываются из фонового потока!) |
-| `IsConnected` | состояние |
-
-Отправка сериализуется через `SemaphoreSlim`: `ClientWebSocket` не допускает параллельных `SendAsync`.
-В формах всё, что касается UI, оборачивается в `BeginInvoke`.
-
-## `Input/KeyMap.cs`
-
-- `KeyMap.ByName` — имя → (скан-код, extended).
-- `KeyMap.FromScan(scan, extended)` — обратное преобразование для окна гостя.
-- `KeyPolicy.P1` / `KeyPolicy.P2` — белые списки; `IsAllowed(role, key)`; `Describe(role)` — человеческое описание для UI.
-
-Чтобы изменить раскладку, правьте **два** места: `KeyPolicy` в клиенте и `ALLOWED_KEYS` в `server/src/index.js`.
-Если добавляете новую клавишу — также внесите её скан-код в `KeyMap.ByName`.
-
-## `Input/InputInjector.cs`
-
-`SendInput` с флагом `KEYEVENTF_SCANCODE` — именно так ввод видят игры на DirectInput.
-
-| Член | Описание |
-|---|---|
-| `Send(key, down)` | нажать/отпустить клавишу |
-| `ReleaseAll()` | отпустить всё зажатое |
-| `HeldCount` | сколько клавиш сейчас зажато гостем |
-
-Класс ведёт учёт зажатых клавиш, чтобы гарантированно отпустить их при обрыве связи.
-Клавиши попадают в активное окно — отсюда требование держать игру в фокусе.
-
-## `Capture/ScreenCapturer.cs`
-
-- `TargetWindow`, `MaxWidth`, `Quality` — настройки захвата.
-- `GetSourceBounds()` — прямоугольник окна или весь экран.
-- `CaptureFrame()` → готовый пакет (заголовок + JPEG) или `null`.
-- `TryParse(packet, out image, out sequence, out timestampMs)` — разбор на стороне гостя.
-- `WindowList.Enumerate()` — список видимых окон для выпадающего списка.
-
-`Bitmap` переиспользуется между кадрами — без этого GC захлёбнётся на 20 FPS.
-
-## `Forms/MainForm.cs`
-
-Авторизация + лобби + журнал. Владеет единственным `RelayClient`, который передаётся в окно сессии.
-`TryAutoLoginAsync()` — вход по сохранённому токену. По `started` открывает `HostForm` или `ViewerForm`.
-
-## `Forms/HostForm.cs`
-
-- Фоновый цикл захвата (`Task.Run`) с адаптивной задержкой `1000/fps - время кадра`.
-- Флаг `_sending` не даёт копить очередь при медленном канале.
-- `HandleJsonFromBackground` инжектит клавиши сразу в фоновом потоке — минус один прыжок через UI-очередь.
-- `peer_left`, `lobby_closed`, `stopped`, `release_all` → `ReleaseAll()`.
-- F8 — пауза ввода гостя.
-
-## `Forms/ViewerForm.cs`
-
-- `PictureBox` в режиме `Zoom` на чёрном фоне + статус-бар.
-- `ProcessKeyPreview` читает `WM_KEYDOWN/WM_KEYUP/WM_SYSKEYDOWN/WM_SYSKEYUP`:
-  scan = `(lParam >> 16) & 0xFF`, extended = `(lParam >> 24) & 1`, автоповтор = `(lParam >> 30) & 1`.
-- `IsInputKey => true` — иначе WinForms съел бы стрелки и Enter на навигацию.
-- При `Deactivate` и закрытии — отпускание всех клавиш и `release_all`.
-- Старый `Image` удаляется после замены — иначе утечка памяти.
-
----
-
-# CI (`.github/workflows/build.yml`)
-
-| Job | Раннер | Что делает |
-|---|---|---|
-| `client` | `windows-latest` | .NET 8, `dotnet publish` → артефакт `CoopStream-client-win-x64` |
-| `server` | `ubuntu-latest` | `node --check`, E2E-тест, артефакт `CoopStream-server` |
-| `release` | `ubuntu-latest` | только по тегам `v*`: zip-архивы в GitHub Release |
-
----
-
-# Типовые доработки
-
-| Задача | Где править |
-|---|---|
-| Добавить клавишу | `KeyMap.ByName` + `KeyPolicy` + `ALLOWED_KEYS` |
-| Добавить третьего игрока | `Lobby` (массив участников вместо `guest`) + ветка `onBinary` |
-| Перейти на PNG/другой кодек | `ScreenCapturer` и байт типа кадра |
-| Передавать звук | новый тип бинарного кадра `0x02` + WASAPI-захват у хоста |
-| Хранить лобби между рестартами | `LobbyManager` → сериализация в `DATA_FILE` |
+`.github/workflows/build.yml`: тест сервера → публикация клиента → артефакты
+`DeltaDotNet-client-win-x64` и `DeltaDotNet-server`; по тегу `v*` собирается релиз.

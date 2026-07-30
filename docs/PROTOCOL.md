@@ -1,150 +1,130 @@
-# Протокол CoopStream
+# Протокол DeltaDotNet, версия 2
 
-Транспорт — один WebSocket на клиента: `ws://хост:PORT/ws` (или `wss://...` за TLS-прокси).
+Транспорт — WebSocket (RFC 6455) по пути `/ws`. Сервер реализует его сам,
+без библиотек. Два типа кадров:
 
-- **Текстовые кадры** — JSON-сообщения, всегда с полем `t` (тип).
-- **Бинарные кадры** — только видео, только в направлении хост → сервер → гость.
+- **текстовые** — JSON-сообщения с обязательным полем `t` (тип);
+- **бинарные** — видеокадры от хоста.
 
-## HTTP-эндпойнты
+## Роли
 
-| Метод | Путь | Ответ |
-|---|---|---|
-| GET | `/health` | `{"ok":true,"uptime":123.4,"lobbies":1,"clients":2}` |
-| GET | `/` | то же самое что `/health` |
-| GET | `/stats` | `{"lobbies":[...],"clients":2}` |
-| GET | `/ws` | Upgrade → WebSocket |
+| Роль | Кто |
+| --- | --- |
+| `P1` | хост, создатель лобби, шлёт видео и жмёт клавиши в игре сам |
+| `P2`–`P4` | гости, шлют действия и получают видео |
 
-## Клиент → сервер
+Слоты выдаются по порядку; освободившийся слот может занять новый игрок.
+Размер лобби (`maxPlayers`) — от 2 до 4, задаётся при создании.
 
-### Без авторизации
+## Логические действия
 
-| `t` | Поля | Описание |
-|---|---|---|
-| `register` | `login`, `password` | создать аккаунт и сразу войти |
-| `login` | `login`, `password` | войти |
-| `auth_token` | `token` | войти по сохранённому токену |
-| `ping` | — | проверка связи, ответ `pong` |
+По сети никогда не передаются коды клавиш — только девять имён:
 
-Ответ на все три вида входа: `auth_ok`.
-
-Валидация: `login` — `/^[A-Za-z0-9_.-]{3,24}$/`, `password` — не менее 6 символов.
-
-### После авторизации
-
-| `t` | Поля | Описание |
-|---|---|---|
-| `list_lobbies` | — | список открытых лобби → `lobby_list` |
-| `create_lobby` | `name`, `hostRole` (`"P1"`\|`"P2"`) | создать лобби → `lobby_created` |
-| `join_lobby` | `code` | войти в лобби → `lobby_joined` (хосту — `peer_joined`) |
-| `leave_lobby` | — | выйти → `lobby_left` |
-| `start` | — | только хост и только при двух участниках → `started` обоим |
-| `stop` | — | остановить сессию → `stopped` обоим |
-| `input` | `key`, `down` (bool), `ts?` | нажатие/отпускание клавиши |
-| `release_all` | — | просьба отпустить все клавиши |
-| `chat` | `text` | короткое сообщение напарнику |
-| `stats` | — | статистика сервера → `stats` |
-
-Примеры:
-
-```json
-{"t":"create_lobby","name":"Моя игра","hostRole":"P1"}
-{"t":"join_lobby","code":"K7M2QD"}
-{"t":"input","key":"Left","down":true,"ts":1767000000000}
-{"t":"input","key":"RShift","down":false}
+```
+Up  Down  Left  Right  Confirm  Cancel  Menu  Extra1  Extra2
 ```
 
-## Сервер → клиент
+Преобразование «клавиша → действие» делает клиент гостя, обратное
+«действие → клавиша» — клиент хоста. Сервер о клавиатурах не знает ничего.
 
-| `t` | Поля | Когда |
-|---|---|---|
-| `hello` | `server`, `version`, `allowRegister` | сразу после подключения |
-| `auth_ok` | `login`, `token`, `expiresAt` | успешный вход |
-| `lobby_list` | `lobbies[]` | ответ на `list_lobbies` |
-| `lobby_created` | `lobby`, `role` | вы создали лобби |
-| `lobby_joined` | `lobby`, `role` | вы вошли в лобби |
-| `peer_joined` | `login`, `role` | к вам присоединились |
-| `peer_left` | — | напарник вышел/отвалился |
-| `lobby_left` | — | вы вышли |
-| `lobby_closed` | — | хост закрыл лобби |
-| `started` | `hostRole`, `guestRole` | игра началась |
-| `stopped` | — | сессия остановлена |
-| `input` | `key`, `down`, `ts?` | ретрансляция нажатия напарника |
-| `release_all` | — | отпустить всё |
-| `chat` | `from`, `text` | сообщение в чат |
-| `pong` | `time` | ответ на `ping` |
-| `stats` | `lobbies`, `clients` | ответ на `stats` |
-| `error` | `code`, `message` | любая ошибка |
+## Сообщения клиента → сервера
 
-Объект `lobby`:
+| `t` | Поля | Описание |
+| --- | --- | --- |
+| `register` | `login`, `password` | регистрация |
+| `login` | `login`, `password` | вход |
+| `auth_token` | `token` | вход по сохранённому токену |
+| `list_lobbies` | — | список открытых лобби |
+| `create_lobby` | `name`, `maxPlayers` (2–4) | создать лобби |
+| `join_lobby` | `code` | войти по коду |
+| `leave_lobby` | — | выйти |
+| `start` | — | только хост, нужен хотя бы один гость |
+| `stop` | — | только хост |
+| `input` | `action`, `down` | только гость |
+| `release_all` | — | гость потерял фокус, отпустить всё |
+| `chat` | `text` (≤300) | сообщение всем в лобби |
+| `ping` | `time` | замер задержки |
+| `stats` | — | статистика лобби |
+
+## Сообщения сервера → клиента
+
+| `t` | Поля |
+| --- | --- |
+| `hello` | `version: 2`, `minPlayers: 2`, `maxPlayers: 4`, `actions: [...9]`, `allowRegister` |
+| `auth_ok` | `login`, `token` |
+| `lobby_list` | `lobbies: [краткие описания]` |
+| `lobby_created` | `lobby`, `you: "host"`, `role: "P1"` |
+| `lobby_joined` | `lobby`, `you: "guest"`, `role` |
+| `peer_joined` / `peer_left` | `lobby`, `login`, `role` |
+| `lobby_left` | — |
+| `lobby_closed` | `reason` |
+| `started` / `stopped` | `lobby` |
+| `input` | `role`, `login`, `action`, `down` — только хосту |
+| `release_all` | `role`, `login` — только хосту |
+| `chat` | `from`, `role`, `text` |
+| `pong` | `time` |
+| `stats` | `stats: { frames, bytes, players, maxPlayers, running }` |
+| `error` | `code`, `message` |
+
+### Объект лобби
 
 ```json
 {
-  "code": "K7M2QD",
-  "name": "Моя игра",
-  "host": "player1",
-  "hostRole": "P1",
-  "guestRole": "P2",
-  "guest": null,
+  "code": "K7QM2X",
+  "name": "Вечерняя партия",
+  "host": "player_one",
+  "maxPlayers": 3,
+  "playerCount": 2,
   "running": false,
-  "createdAt": 1767000000000
+  "createdAt": 1770000000000,
+  "players": [
+    { "login": "player_one", "role": "P1", "host": true },
+    { "login": "player_two", "role": "P2", "host": false }
+  ]
 }
 ```
 
 ## Коды ошибок
 
-| Код | Значение |
-|---|---|
-| `unauthorized` | действие требует входа |
-| `bad_json` | сообщение не разобралось |
-| `register_disabled` | `ALLOW_REGISTER=0` |
-| `bad_login` / `bad_password` | не прошла валидация |
-| `user_exists` | логин занят |
-| `bad_credentials` | неверный логин/пароль |
-| `bad_token` | токен истёк или подделан |
-| `no_lobby` | вы не в лобби / код не найден |
-| `lobby_full` | в лобби уже двое |
-| `self_join` | нельзя войти в своё же лобби |
-| `not_host` | действие доступно только хосту |
-| `no_guest` | некому играть вторым |
-| `key_not_allowed` | клавиша вне белого списка роли |
-| `unknown_type` | неизвестный `t` |
-| `internal` | внутренняя ошибка сервера |
+`unauthorized`, `bad_json`, `register_disabled`, `bad_login`, `bad_password`,
+`user_exists`, `bad_credentials`, `bad_token`, `no_lobby`, `lobby_full`,
+`self_join`, `not_host`, `not_guest`, `no_guest`, `bad_action`,
+`bad_max_players`, `unknown_type`, `internal`.
 
-## Белый список клавиш
+## Бинарный кадр
 
-```js
-P1: ['W','A','S','D','Z','X','P','C','LCtrl','RCtrl','LShift','RShift']
-P2: ['Up','Down','Left','Right','Enter','NumEnter','C','LCtrl','RCtrl','LShift','RShift']
+Заголовок 17 байт, дальше JPEG:
+
+| Смещение | Размер | Значение |
+| --- | --- | --- |
+| 0 | 1 | тип кадра, `0x01` = JPEG |
+| 1 | 4 | номер кадра, uint32 LE |
+| 5 | 2 | ширина, uint16 LE |
+| 7 | 2 | высота, uint16 LE |
+| 9 | 8 | время Unix в мс, int64 LE |
+| 17 | … | тело JPEG |
+
+Сервер пересылает кадр всем гостям без разбора. Если у конкретного гостя
+в буфере накопилось больше 4 МБ, кадр для него пропускается (медленный канал
+одного игрока не тормозит остальных).
+
+## Пример сеанса
+
+```
+← {"t":"hello","version":2,"maxPlayers":4,"actions":[...]}
+→ {"t":"register","login":"player_one","password":"secret123"}
+← {"t":"auth_ok","login":"player_one","token":"..."}
+→ {"t":"create_lobby","name":"Игра","maxPlayers":3}
+← {"t":"lobby_created","role":"P1","lobby":{...}}
+← {"t":"peer_joined","login":"player_two","role":"P2","lobby":{...}}
+→ {"t":"start"}
+← {"t":"started","lobby":{...}}
+→ <бинарные кадры>
+← {"t":"input","role":"P2","login":"player_two","action":"Left","down":true}
 ```
 
-Скан-коды (PS/2 set 1), которые используются при инжекции:
+## Совместимость
 
-| Имя | Scan | Extended |
-|---|---|---|
-| `W` `A` `S` `D` | `0x11` `0x1E` `0x1F` `0x20` | нет |
-| `Z` `X` `P` `C` | `0x2C` `0x2D` `0x19` `0x2E` | нет |
-| `LShift` / `RShift` | `0x2A` / `0x36` | нет |
-| `LCtrl` / `RCtrl` | `0x1D` / `0x1D` | нет / да |
-| `Up` `Down` `Left` `Right` | `0x48` `0x50` `0x4B` `0x4D` | да |
-| `Enter` / `NumEnter` | `0x1C` / `0x1C` | нет / да |
-
-## Формат бинарного кадра
-
-Всего 17 байт заголовка, далее — JPEG «as is». Порядок байт — little-endian.
-
-| Смещение | Размер | Тип | Поле |
-|---|---|---|---|
-| 0 | 1 | uint8 | тип кадра, `0x01` = JPEG |
-| 1 | 4 | uint32 | номер кадра |
-| 5 | 2 | uint16 | ширина |
-| 7 | 2 | uint16 | высота |
-| 9 | 8 | int64 | время захвата, Unix ms (для замера задержки) |
-| 17 | … | bytes | JPEG |
-
-Сервер не заглядывает внутрь кадра — он просто пересылает байты.
-
-## Служебное
-
-- Heartbeat: сервер шлёт `ping` каждые 20 секунд, не ответившие соединения разрываются.
-- Максимальный размер кадра — `MAX_FRAME_KB` (по умолчанию 2048 КБ); превышение закрывает соединение.
-- Если буфер отправки гостю превышает 4 МБ, очередной кадр отбрасывается.
+Версия 1 передавала имена клавиш (`{t:"input", key:"Left"}`) и знала только
+двух игроков. Клиенты версии 1 с сервером версии 2 не работают: поле
+`action` обязательно, иначе возвращается `bad_action`. Обновляйте всех сразу.

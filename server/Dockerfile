@@ -1,4 +1,4 @@
-# Лёгкий образ релей-сервера CoopStream (без npm-зависимостей).
+# Лёгкий образ релей-сервера DeltaDotNet (без npm-зависимостей).
 FROM node:20-alpine
 
 WORKDIR /app

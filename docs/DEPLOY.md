@@ -26,25 +26,25 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ```bash
 sudo apt update && sudo apt install -y nodejs git
-git clone https://github.com/USER/REPO.git /opt/coopstream
-cd /opt/coopstream/server
+git clone https://github.com/USER/REPO.git /opt/deltadotnet
+cd /opt/deltadotnet/server
 node src/index.js   # проверочный запуск, Ctrl+C
 ```
 
-Файл `/etc/systemd/system/coopstream.service`:
+Файл `/etc/systemd/system/deltadotnet.service`:
 
 ```ini
 [Unit]
-Description=CoopStream relay
+Description=DeltaDotNet relay
 After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/coopstream/server
+WorkingDirectory=/opt/deltadotnet/server
 ExecStart=/usr/bin/node src/index.js
 Environment=PORT=8080
 Environment=AUTH_SECRET=ВАШ_ДЛИННЫЙ_СЕКРЕТ
-Environment=DATA_FILE=/opt/coopstream/server/data/users.json
+Environment=DATA_FILE=/opt/deltadotnet/server/data/users.json
 Restart=always
 RestartSec=3
 
@@ -54,8 +54,8 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now coopstream
-sudo systemctl status coopstream
+sudo systemctl enable --now deltadotnet
+sudo systemctl status deltadotnet
 sudo ufw allow 8080/tcp   # если без обратного прокси
 ```
 
@@ -65,12 +65,12 @@ sudo ufw allow 8080/tcp   # если без обратного прокси
 
 ```bash
 cd server
-docker build -t coopstream .
-docker run -d --name coopstream --restart unless-stopped \
+docker build -t deltadotnet .
+docker run -d --name deltadotnet --restart unless-stopped \
   -p 8080:8080 \
   -e AUTH_SECRET=ВАШ_СЕКРЕТ \
-  -v coopstream-data:/app/data \
-  coopstream
+  -v deltadotnet-data:/app/data \
+  deltadotnet
 ```
 
 Том `/app/data` обязателен — иначе аккаунты стираются при пересоздании контейнера.
@@ -79,7 +79,7 @@ docker run -d --name coopstream --restart unless-stopped \
 
 ```yaml
 services:
-  coopstream:
+  deltadotnet:
     build: ./server
     restart: unless-stopped
     ports: ["8080:8080"]
@@ -87,9 +87,9 @@ services:
       AUTH_SECRET: "ВАШ_СЕКРЕТ"
       ALLOW_REGISTER: "1"
     volumes:
-      - coopstream-data:/app/data
+      - deltadotnet-data:/app/data
 volumes:
-  coopstream-data:
+  deltadotnet-data:
 ```
 
 ## Вариант 3. Railway / Render / Fly.io

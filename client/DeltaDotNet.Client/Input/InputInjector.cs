@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace CoopStream.Client.Input;
+namespace DeltaDotNet.Client.Input;
 
 /// <summary>
 /// Ввод клавиш в активное окно хоста через WinAPI SendInput с аппаратными scan code.

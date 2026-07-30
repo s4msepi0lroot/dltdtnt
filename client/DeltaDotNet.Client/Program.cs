@@ -1,6 +1,6 @@
-using CoopStream.Client.Forms;
+using DeltaDotNet.Client.Forms;
 
-namespace CoopStream.Client;
+namespace DeltaDotNet.Client;
 
 /// <summary>Точка входа клиента.</summary>
 internal static class Program

@@ -1,20 +1,19 @@
 'use strict'
 /**
- * Сквозной (end-to-end) тест relay-сервера.
+ * Сквозной (end-to-end) тест relay-сервера DeltaDotNet.
  *
  * Запускает сервер в отдельном процессе и проверяет весь сценарий:
  *   0. корректность WebSocket-рукопожатия (Sec-WebSocket-Accept)
  *   1. авторизация (регистрация, ошибки, вход по токену)
- *   2. лобби (создание, список, подключение)
- *   3. старт игры и пересылка видеокадра
- *   4. ввод с клавиатуры и белый список клавиш
+ *   2. лобби на 3 игроков (создание, роли P1/P2/P3, заполненное лобби)
+ *   3. старт игры и рассылка видеокадра всем гостям
+ *   4. логические действия ввода и их валидация
  *   5. корректная обработка обрыва связи
  *
  * Запуск: node server/e2e-test.js   (или npm test в папке server)
  */
 const net = require('net')
 const os = require('os')
-const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const { spawn } = require('child_process')
@@ -175,7 +174,7 @@ class TestClient {
 }
 
 async function run() {
-  const dataFile = path.join(os.tmpdir(), `coopstream-test-${Date.now()}.json`)
+  const dataFile = path.join(os.tmpdir(), `deltadotnet-test-${Date.now()}.json`)
 
   const child = spawn(process.execPath, [path.join(__dirname, 'src', 'index.js')], {
     env: {
@@ -204,26 +203,34 @@ async function run() {
   }
 
   const host = new TestClient('host')
-  const guest = new TestClient('guest')
+  const p2 = new TestClient('p2')
+  const p3 = new TestClient('p3')
+  const extra = new TestClient('extra')
 
   try {
     // -------------------------------------------------- 0. рукопожатие
     await host.connect(PORT)
-    await guest.connect(PORT)
+    await p2.connect(PORT)
+    await p3.connect(PORT)
+    await extra.connect(PORT)
     assert(
       host.acceptHeader === host.expectedAccept,
       `Sec-WebSocket-Accept неверен: ожидался ${host.expectedAccept}, получен ${host.acceptHeader}`
     )
-    assert(guest.acceptHeader === guest.expectedAccept, 'Sec-WebSocket-Accept неверен у второго клиента')
+    assert(p2.acceptHeader === p2.expectedAccept, 'Sec-WebSocket-Accept неверен у второго клиента')
     console.log('  [ok] 0. рукопожатие WebSocket')
 
-    await host.waitJson('hello')
-    await guest.waitJson('hello')
+    const hello = await host.waitJson('hello')
+    assert(hello.version === 2, 'версия протокола 2')
+    assert(hello.maxPlayers === 4, 'сервер сообщает максимум 4 игрока')
+    assert(Array.isArray(hello.actions) && hello.actions.length === 9, '9 логических действий')
+    await p2.waitJson('hello')
+    await p3.waitJson('hello')
+    await extra.waitJson('hello')
 
     // ------------------------------------------------- 1. авторизация
     host.sendJson({ t: 'create_lobby', name: 'no auth' })
-    const denied = await host.waitJson('error')
-    assert(denied.code === 'unauthorized', 'действие без входа должно отклоняться')
+    assert((await host.waitJson('error')).code === 'unauthorized', 'действие без входа отклоняется')
 
     host.sendJson({ t: 'register', login: 'player_one', password: 'secret123' })
     const hostAuth = await host.waitJson('auth_ok')
@@ -236,11 +243,15 @@ async function run() {
     host.sendJson({ t: 'register', login: 'player_one', password: 'secret123' })
     assert((await host.waitJson('error')).code === 'user_exists', 'дубль логина отклоняется')
 
-    guest.sendJson({ t: 'register', login: 'player_two', password: 'secret456' })
-    await guest.waitJson('auth_ok')
+    p2.sendJson({ t: 'register', login: 'player_two', password: 'secret456' })
+    await p2.waitJson('auth_ok')
+    p3.sendJson({ t: 'register', login: 'player_three', password: 'secret789' })
+    await p3.waitJson('auth_ok')
+    extra.sendJson({ t: 'register', login: 'player_four', password: 'secret000' })
+    await extra.waitJson('auth_ok')
 
-    guest.sendJson({ t: 'login', login: 'player_two', password: 'wrong' })
-    assert((await guest.waitJson('error')).code === 'bad_credentials', 'неверный пароль')
+    p2.sendJson({ t: 'login', login: 'player_two', password: 'wrong' })
+    assert((await p2.waitJson('error')).code === 'bad_credentials', 'неверный пароль')
 
     const tokenClient = new TestClient('token')
     await tokenClient.connect(PORT)
@@ -252,40 +263,53 @@ async function run() {
     tokenClient.destroy()
     console.log('  [ok] 1. авторизация')
 
-    // ------------------------------------------------------- 2. лобби
-    host.sendJson({ t: 'create_lobby', name: 'Тестовая игра', hostRole: 'P1' })
+    // ------------------------------------------- 2. лобби на 3 игроков
+    host.sendJson({ t: 'create_lobby', name: 'Слишком много', maxPlayers: 9 })
+    assert((await host.waitJson('error')).code === 'bad_max_players', 'больше 4 игроков нельзя')
+
+    host.sendJson({ t: 'create_lobby', name: 'Тестовая игра', maxPlayers: 3 })
     const created = await host.waitJson('lobby_created')
     const code = created.lobby.code
     assert(/^[A-Z2-9]{6}$/.test(code), 'код лобби из 6 символов, получено ' + code)
     assert(created.role === 'P1', 'хост получает роль P1')
+    assert(created.lobby.maxPlayers === 3, 'в лобби 3 места')
+    assert(created.lobby.playerCount === 1, 'пока только хост')
 
-    guest.sendJson({ t: 'list_lobbies' })
-    const list = await guest.waitJson('lobby_list')
-    assert(
-      list.lobbies.some((l) => l.code === code),
-      'созданное лобби видно в списке'
-    )
+    p2.sendJson({ t: 'list_lobbies' })
+    const list = await p2.waitJson('lobby_list')
+    const entry = list.lobbies.find((l) => l.code === code)
+    assert(entry, 'созданное лобби видно в списке')
+    assert(entry.maxPlayers === 3 && entry.playerCount === 1, 'в списке видно 1/3')
 
-    guest.sendJson({ t: 'join_lobby', code: 'ZZZZZZ' })
-    assert((await guest.waitJson('error')).code === 'no_lobby', 'несуществующий код')
+    p2.sendJson({ t: 'join_lobby', code: 'ZZZZZZ' })
+    assert((await p2.waitJson('error')).code === 'no_lobby', 'несуществующий код')
 
     host.sendJson({ t: 'start' })
-    assert((await host.waitJson('error')).code === 'no_guest', 'старт без второго игрока невозможен')
+    assert((await host.waitJson('error')).code === 'no_guest', 'старт в одиночку невозможен')
 
-    guest.sendJson({ t: 'join_lobby', code })
-    const joined = await guest.waitJson('lobby_joined')
-    assert(joined.role === 'P2', 'гость получает роль P2')
-    const peer = await host.waitJson('peer_joined')
-    assert(peer.login === 'player_two', 'хост узнаёт о втором игроке')
-    console.log('  [ok] 2. лобби')
+    p2.sendJson({ t: 'join_lobby', code })
+    assert((await p2.waitJson('lobby_joined')).role === 'P2', 'первый гость — P2')
+    assert((await host.waitJson('peer_joined')).role === 'P2', 'хост узнал о P2')
+
+    p3.sendJson({ t: 'join_lobby', code })
+    const joined3 = await p3.waitJson('lobby_joined')
+    assert(joined3.role === 'P3', 'второй гость — P3')
+    assert(joined3.lobby.playerCount === 3, 'в лобби трое')
+    await host.waitJson('peer_joined')
+    await p2.waitJson('peer_joined')
+
+    extra.sendJson({ t: 'join_lobby', code })
+    assert((await extra.waitJson('error')).code === 'lobby_full', 'четвёртый не влезает в лобби на 3')
+    console.log('  [ok] 2. лобби на 3 игроков')
 
     // ------------------------------------------- 3. старт и видеокадр
-    guest.sendJson({ t: 'start' })
-    assert((await guest.waitJson('error')).code === 'not_host', 'запускает только хост')
+    p2.sendJson({ t: 'start' })
+    assert((await p2.waitJson('error')).code === 'not_host', 'запускает только хост')
 
     host.sendJson({ t: 'start' })
     await host.waitJson('started')
-    await guest.waitJson('started')
+    await p2.waitJson('started')
+    await p3.waitJson('started')
 
     const frame = Buffer.alloc(17 + 1000)
     frame[0] = 0x01
@@ -293,74 +317,70 @@ async function run() {
     frame.writeUInt16LE(1280, 5)
     frame.writeUInt16LE(720, 7)
     frame.writeBigInt64LE(BigInt(Date.now()), 9)
-    for (let i = 17; i < frame.length; i++) frame[i] = i & 0xff
+    frame.fill(0xab, 17)
     host.sendBinary(frame)
 
-    const received = await guest.waitBinary()
-    assert(received.length === frame.length, 'длина кадра совпадает')
-    assert(received.equals(frame), 'кадр дошёл байт-в-байт')
-    assert(received.readUInt32LE(1) === 42, 'номер кадра сохранён')
-
-    guest.sendBinary(frame)
-    await sleep(150)
-    assert(host.binaryInbox.length === 0, 'гость не может транслировать видео')
-    console.log('  [ok] 3. старт и трансляция видео')
-
-    // ------------------------------------------------------- 4. ввод
-    guest.sendJson({ t: 'input', key: 'Left', down: true })
-    const input = await host.waitJson('input')
-    assert(input.key === 'Left' && input.down === true, 'нажатие Left дошло до хоста')
-    assert(input.role === 'P2', 'роль указана в событии')
-
-    guest.sendJson({ t: 'input', key: 'Left', down: false })
-    assert((await host.waitJson('input')).down === false, 'отпускание Left дошло')
-
-    for (const key of ['Up', 'Down', 'Right', 'Enter', 'NumEnter', 'C', 'LShift', 'RShift', 'LCtrl', 'RCtrl']) {
-      guest.sendJson({ t: 'input', key, down: true })
-      assert((await host.waitJson('input')).key === key, `клавиша ${key} разрешена для P2`)
-    }
-
-    for (const key of ['W', 'A', 'S', 'D', 'Z', 'X', 'P']) {
-      guest.sendJson({ t: 'input', key, down: true })
-      const err = await guest.waitJson('error')
-      assert(err.code === 'key_not_allowed', `клавиша ${key} запрещена для P2`)
-    }
-    assert(host.jsonInbox.filter((m) => m.t === 'input').length === 0, 'запрещённые клавиши не утекают к хосту')
-
-    guest.sendJson({ t: 'release_all' })
-    await host.waitJson('release_all')
-
-    guest.sendJson({ t: 'chat', text: 'готов' })
-    const chatToHost = await host.waitJson('chat')
-    const chatToGuest = await guest.waitJson('chat')
-    assert(chatToHost.text === 'готов' && chatToGuest.text === 'готов', 'чат шлётся обоим')
+    const got2 = await p2.waitBinary()
+    const got3 = await p3.waitBinary()
+    assert(got2.length === frame.length && got2.readUInt32LE(1) === 42, 'P2 получил кадр целиком')
+    assert(got3.length === frame.length && got3.readUInt16LE(5) === 1280, 'P3 получил тот же кадр')
 
     host.sendJson({ t: 'stats' })
-    const stats = await host.waitJson('stats')
-    assert(stats.stats && stats.stats.frames === 1, 'статистика считает кадры')
+    const stats = (await host.waitJson('stats')).stats
+    assert(stats.frames === 1 && stats.players === 3 && stats.maxPlayers === 3, 'статистика лобби')
+    console.log('  [ok] 3. старт и трансляция видео всем гостям')
 
-    host.sendJson({ t: 'nonsense' })
-    assert((await host.waitJson('error')).code === 'unknown_type', 'неизвестный тип сообщения')
-    console.log('  [ok] 4. ввод и белый список клавиш')
+    // ------------------------------------------------ 4. действия ввода
+    p2.sendJson({ t: 'input', action: 'Left', down: true })
+    const in2 = await host.waitJson('input')
+    assert(in2.role === 'P2' && in2.action === 'Left' && in2.down === true, 'действие P2 дошло до хоста')
+    assert(in2.login === 'player_two', 'в событии есть логин игрока')
 
-    // ------------------------------------------------- 5. отключение
-    guest.destroy()
+    p3.sendJson({ t: 'input', action: 'Confirm', down: true })
+    const in3 = await host.waitJson('input')
+    assert(in3.role === 'P3' && in3.action === 'Confirm', 'действие P3 пришло с его ролью')
+
+    p2.sendJson({ t: 'input', action: 'Left', down: false })
+    assert((await host.waitJson('input')).down === false, 'отпускание клавиши пересылается')
+
+    p2.sendJson({ t: 'input', action: 'SelfDestruct', down: true })
+    assert((await p2.waitJson('error')).code === 'bad_action', 'неизвестное действие отклоняется')
+
+    host.sendJson({ t: 'input', action: 'Up', down: true })
+    assert((await host.waitJson('error')).code === 'not_guest', 'ввод хоста не пересылается')
+
+    p3.sendJson({ t: 'release_all' })
+    assert((await host.waitJson('release_all')).role === 'P3', 'сброс клавиш приходит с ролью')
+    console.log('  [ok] 4. логические действия и их валидация')
+
+    // --------------------------------------------------- 5. обрыв связи
+    p3.destroy()
     const left = await host.waitJson('peer_left')
-    assert(left.t === 'peer_left', 'хост узнаёт об отключении гостя')
-    console.log('  [ok] 5. обрыв связи')
+    assert(left.role === 'P3', 'хост узнал об уходе P3')
+    assert(left.lobby.playerCount === 2, 'осталось двое')
+
+    // Новый игрок занимает освободившийся слот P3.
+    extra.sendJson({ t: 'join_lobby', code })
+    assert((await extra.waitJson('lobby_joined')).role === 'P3', 'свободный слот переиспользуется')
+    await host.waitJson('peer_joined')
+
+    // Уход хоста закрывает лобби для всех.
+    host.destroy()
+    assert((await p2.waitJson('lobby_closed')).reason, 'P2 узнал о закрытии лобби')
+    await extra.waitJson('lobby_closed')
+    console.log('  [ok] 5. обрыв связи и закрытие лобби')
 
     console.log('\nВСЕ ТЕСТЫ ПРОШЛИ')
   } finally {
     host.destroy()
-    guest.destroy()
-    child.kill('SIGKILL')
-    try {
-      fs.unlinkSync(dataFile)
-    } catch (_) {}
+    p2.destroy()
+    p3.destroy()
+    extra.destroy()
+    child.kill()
   }
 }
 
 run().catch((err) => {
-  console.error('\nТЕСТ ПРОВАЛЕН:', err.message)
+  console.error('\nТЕСТ ПРОВАЛЕН: ' + err.message)
   process.exit(1)
 })

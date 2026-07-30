@@ -1,7 +1,7 @@
 {
-  "name": "coopstream-relay",
+  "name": "deltadotnet-relay",
   "version": "1.0.0",
-  "description": "Лёгкий релей-сервер для CoopStream: авторизация, лобби, ретрансляция кадров и ввода. Без внешних зависимостей.",
+  "description": "Лёгкий релей-сервер для DeltaDotNet: авторизация, лобби, ретрансляция кадров и ввода. Без внешних зависимостей.",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

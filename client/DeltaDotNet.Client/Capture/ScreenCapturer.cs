@@ -1,7 +1,7 @@
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 
-namespace CoopStream.Client.Capture;
+namespace DeltaDotNet.Client.Capture;
 
 /// <summary>
 /// Захват экрана или отдельного окна и упаковка кадра в JPEG.

@@ -7,7 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace CoopStream.Client.Net;
+namespace DeltaDotNet.Client.Net;
 
 /// <summary>
 /// Клиент relay-сервера: оборачивает ClientWebSocket, разбирает JSON-сообщения
@@ -55,7 +55,7 @@ public sealed class RelayClient : IDisposable
         ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
         ws.Options.UseDefaultCredentials = false;
         if (bypassProxy) ws.Options.Proxy = null;
-        try { ws.Options.SetRequestHeader("User-Agent", "CoopStream/1.0"); } catch { }
+        try { ws.Options.SetRequestHeader("User-Agent", "DeltaDotNet/1.0"); } catch { }
         return ws;
     }
 
@@ -149,7 +149,7 @@ public sealed class RelayClient : IDisposable
             "Connection: Upgrade\r\n" +
             "Sec-WebSocket-Key: " + key + "\r\n" +
             "Sec-WebSocket-Version: 13\r\n" +
-            "User-Agent: CoopStream/1.0\r\n\r\n";
+            "User-Agent: DeltaDotNet/1.0\r\n\r\n";
 
         await stream.WriteAsync(Encoding.ASCII.GetBytes(request), ct);
         await stream.FlushAsync(ct);
@@ -265,7 +265,7 @@ public sealed class RelayClient : IDisposable
             sb.AppendLine("     либо добавьте адрес сервера в список исключений.");
             sb.AppendLine("  2. Отключите проверку трафика в антивирусе (Kaspersky, ESET, Avast).");
             sb.AppendLine("  3. Windows: Параметры → Сеть → Прокси-сервер → выключить.");
-            sb.AppendLine("  4. Убедитесь, что по адресу отвечает именно coopstream-relay, а не");
+            sb.AppendLine("  4. Убедитесь, что по адресу отвечает именно deltadotnet-relay, а не");
             sb.AppendLine("     другой сервис на том же порту.");
             sb.Append("Ответ /health: ").Append(await ProbeHealthAsync(uri));
         }
