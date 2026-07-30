@@ -84,7 +84,7 @@ public sealed class MainForm : Form
         {
             Location = new Point(30, 18),
             Size = new Size(560, 84),
-            FallbackText = "DELTA . DOT . NET",
+            FallbackText = "Delta.Dot.Net",
             Subtitle = "* Совместная игра через сеть для локального мультиплеера Deltarune",
         };
         Controls.Add(banner);
@@ -136,7 +136,7 @@ public sealed class MainForm : Form
         btnRegister.Click += async (s, e) => await AuthAsync("register");
         Add(btnRegister, 204, 168, 174, 40);
 
-        var btnBindings = new DeltaButton { Text = "МОЁ УПРАВЛЕНИЕ" };
+        var btnBindings = new DeltaButton { Text = "УПРАВЛЕНИЕ" };
         btnBindings.Click += (s, e) => EditMyBindings();
         Add(btnBindings, 18, 220, 174, 40);
 
@@ -150,11 +150,8 @@ public sealed class MainForm : Form
         };
         Add(btnQuality, 204, 220, 174, 40);
 
-        var note = DeltaTheme.Caption("Токен сохраняется, повторный вход пройдёт автоматически.", DeltaTheme.TextDim, DeltaTheme.FontSmall);
+        var note = DeltaTheme.Caption("Повторный вход автоматический.", DeltaTheme.TextDim, DeltaTheme.FontSmall);
         Add(note, 18, 272, 360, 16);
-
-        var assetsNote = DeltaTheme.Caption("Картинки: папка assets рядом с программой (logo.png, icon.ico).", DeltaTheme.TextDim, DeltaTheme.FontSmall);
-        Add(assetsNote, 18, 292, 360, 16);
     }
 
     private void BuildLobbyPanel()
@@ -194,7 +191,7 @@ public sealed class MainForm : Form
         Add(DeltaTheme.Caption("Код лобби", DeltaTheme.TextDim, DeltaTheme.FontSmall), 18, 198, 190, 16);
         Add(_code, 18, 218, 195, 34);
 
-        Add(DeltaTheme.Caption("Пароль (если закрытое)", DeltaTheme.TextDim, DeltaTheme.FontSmall), 221, 198, 200, 16);
+        Add(DeltaTheme.Caption("Пароль (если закрытое лобби)", DeltaTheme.TextDim, DeltaTheme.FontSmall), 221, 198, 200, 16);
         Add(_joinPassword, 221, 218, 195, 34);
 
         _btnJoin = new DeltaButton { Text = "ПОДКЛЮЧИТЬСЯ" };
@@ -225,8 +222,8 @@ public sealed class MainForm : Form
 
     private string AccessText() => _cfg.LobbyJoinMode switch
     {
-        "password" => "ДОСТУП: ПО ПАРОЛЮ",
-        "whitelist" => "ДОСТУП: ПО ЛОГИНАМ",
+        "password" => "ДОСТУП: ПАРОЛЬ",
+        "whitelist" => "ДОСТУП: ЛОГИН",
         _ => "ДОСТУП: ОТКРЫТОЕ",
     };
 
@@ -249,7 +246,7 @@ public sealed class MainForm : Form
             case "password":
             {
                 var list = PromptForm.Ask(this, "Кого пускать",
-                    "Логины через запятую — только они смогут зайти",
+                    "Логины через запятую - только они смогут зайти",
                     string.Join(", ", _cfg.LobbyAllowList));
                 if (string.IsNullOrWhiteSpace(list)) return;
                 _cfg.LobbyJoinMode = "whitelist";
@@ -369,7 +366,7 @@ public sealed class MainForm : Form
         var role = picker.SelectedRole;
         using var dialog = new BindingsForm(
             _cfg.GetMyBindings(role), role,
-            "МОЁ УПРАВЛЕНИЕ — " + role,
+            "УПРАВЛЕНИЕ: " + role,
             "Какие клавиши вы жмёте у себя, играя за " + role);
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
 

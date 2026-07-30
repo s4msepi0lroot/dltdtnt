@@ -29,7 +29,7 @@ public sealed class AdminForm : Form
     {
         _client = client;
 
-        Text = "DeltaDotNet — админка";
+        Text = "DeltaDotNet админка";
         ClientSize = new Size(980, 700);
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
