@@ -28,4 +28,21 @@
     <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
 
+  <!--
+    Иконка самого exe. Файл необязателен: если assets/icon.ico не положить,
+    свойство просто не выставится и сборка пройдёт с обычной иконкой .NET.
+  -->
+  <PropertyGroup Condition="Exists('$(MSBuildProjectDirectory)/assets/icon.ico')">
+    <ApplicationIcon>assets/icon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!--
+    Картинки копируются рядом с exe в папку assets. При PublishSingleFile они
+    остаются обычными файлами рядом — их можно менять без пересборки.
+    Маркдаун-инструкцию копировать не надо.
+  -->
+  <ItemGroup>
+    <None Include="assets/**" Exclude="assets/README.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

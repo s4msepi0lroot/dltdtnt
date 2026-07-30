@@ -23,6 +23,20 @@ public sealed class AppConfig
     /// <summary>Сколько игроков создавать в лобби (2-4), включая хоста.</summary>
     public int PlayerCount { get; set; } = 2;
 
+    // ------------------------------------------------------------ доступ в лобби
+
+    /// <summary>"public" — лобби видно всем в списке, "private" — только по коду.</summary>
+    public string LobbyVisibility { get; set; } = "public";
+
+    /// <summary>Режим входа: "open", "password" или "whitelist" (список логинов).</summary>
+    public string LobbyJoinMode { get; set; } = "open";
+
+    /// <summary>Последний пароль создаваемого лобби (чтобы не вводить каждый раз).</summary>
+    public string LobbyPassword { get; set; } = "";
+
+    /// <summary>Список логинов, кого пускать в лобби в режиме whitelist.</summary>
+    public List<string> LobbyAllowList { get; set; } = new();
+
     /// <summary>
     /// Мои личные клавиши для каждой роли: роль -&gt; (действие -&gt; клавиша).
     /// Это то, что человек жмёт у себя на клавиатуре.
@@ -85,6 +99,10 @@ public sealed class AppConfig
         JpegQuality = Math.Clamp(JpegQuality, 20, 95);
         MaxWidth = Math.Clamp(MaxWidth, 480, 1920);
         PlayerCount = Math.Clamp(PlayerCount, 2, 4);
+        if (LobbyVisibility != "private") LobbyVisibility = "public";
+        if (LobbyJoinMode != "password" && LobbyJoinMode != "whitelist") LobbyJoinMode = "open";
+        LobbyPassword ??= "";
+        LobbyAllowList ??= new();
         MyBindings ??= new();
         GameKeys ??= new();
         return this;

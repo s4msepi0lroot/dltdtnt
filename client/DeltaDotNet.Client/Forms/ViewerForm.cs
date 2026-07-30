@@ -48,6 +48,7 @@ public sealed class ViewerForm : Form
         ClientSize = new Size(1000, 700);
         KeyPreview = true;
         DeltaTheme.ApplyForm(this, drawBorder: false);
+        DeltaAssets.ApplyIcon(this);
 
         BuildLayout(lobby);
 
@@ -74,7 +75,7 @@ public sealed class ViewerForm : Form
         var header = new Panel { Dock = DockStyle.Top, Height = 56, BackColor = DeltaTheme.Background };
         Controls.Add(header);
 
-        var roleLabel = DeltaTheme.Caption("ВЫ — ИГРОК " + _role, DeltaTheme.Text, DeltaTheme.FontBig);
+        var roleLabel = DeltaTheme.Caption("ВЫ " + _role, DeltaTheme.Text, DeltaTheme.FontBig);
         roleLabel.Location = new Point(20, 8);
         header.Controls.Add(roleLabel);
 
@@ -104,7 +105,7 @@ public sealed class ViewerForm : Form
         _screen.BringToFront();
 
         UpdateKeysLabel();
-        UpdateStatus("Ожидаем старт игры от хоста");
+        UpdateStatus("Ожидаем старт от хоста");
     }
 
     private void UpdateStatus(string text, Color? color = null)
@@ -202,7 +203,7 @@ public sealed class ViewerForm : Form
         ReleaseAll();
         using var dialog = new BindingsForm(
             _bindings, _role,
-            "МОЁ УПРАВЛЕНИЕ — " + _role,
+            "УПРАВЛЕНИЕ: " + _role,
             "Какие клавиши вы жмёте у себя. Остальных это не касается.");
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
@@ -231,7 +232,7 @@ public sealed class ViewerForm : Form
                 if (IsDisposed) return;
                 _screen.Invalidate();
                 long lag = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - timestampMs;
-                UpdateStatus($"Кадров: {_framesReceived} · задержка ~{Math.Max(0, lag)} мс", DeltaTheme.Good);
+                UpdateStatus($"Кадров: {_framesReceived} - задержка ~{Math.Max(0, lag)} мс", DeltaTheme.Good);
             }));
         }
     }
@@ -277,8 +278,32 @@ public sealed class ViewerForm : Form
 
                 case "lobby_closed":
                     ReleaseAll();
-                    MessageBox.Show(this, "Хост закрыл лобби.", "DeltaDotNet", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show(this,
+                        m.TryGetProperty("reason", out var closeReason) && closeReason.ValueKind == JsonValueKind.String
+                            ? "Лобби закрыто: " + closeReason.GetString()
+                            : "Хост закрыл лобби.",
+                        "DeltaDotNet", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     Close();
+                    break;
+
+                // Хост выгнал или забанил нас — возвращаемся в главное меню.
+                case "kicked":
+                {
+                    ReleaseAll();
+                    bool banned = m.TryGetProperty("banned", out var b) && b.ValueKind == JsonValueKind.True;
+                    string reason = m.TryGetProperty("reason", out var r) && r.ValueKind == JsonValueKind.String
+                        ? r.GetString()
+                        : "без указания причины";
+                    MessageBox.Show(this,
+                        (banned ? "Вас забанили в этом лобби." : "Вас выгнали из лобби.") + "\nПричина: " + reason,
+                        "DeltaDotNet", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    Close();
+                    break;
+                }
+
+                // Объявление от администратора сервера.
+                case "announce":
+                    UpdateStatus("Объявление: " + m.GetProperty("text").GetString(), DeltaTheme.Accent);
                     break;
 
                 case "error":

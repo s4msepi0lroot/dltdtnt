@@ -1,130 +1,141 @@
-# Протокол DeltaDotNet, версия 2
+# Протокол DeltaDotNet, версия 3
 
-Транспорт — WebSocket (RFC 6455) по пути `/ws`. Сервер реализует его сам,
-без библиотек. Два типа кадров:
+Транспорт — WebSocket на пути `/ws`. Два вида сообщений:
 
-- **текстовые** — JSON-сообщения с обязательным полем `t` (тип);
-- **бинарные** — видеокадры от хоста.
+- **текстовые** — JSON с обязательным полем `t` (тип сообщения);
+- **бинарные** — кадры видео от хоста, сервер пересылает их гостям без разбора.
 
-## Роли
+Сервер v3 несовместим с клиентами v1/v2.
 
-| Роль | Кто |
-| --- | --- |
-| `P1` | хост, создатель лобби, шлёт видео и жмёт клавиши в игре сам |
-| `P2`–`P4` | гости, шлют действия и получают видео |
+## Бинарный кадр (17 байт заголовка + JPEG)
 
-Слоты выдаются по порядку; освободившийся слот может занять новый игрок.
-Размер лобби (`maxPlayers`) — от 2 до 4, задаётся при создании.
+| Смещение | Размер | Поле |
+|-----------|--------|------|
+| 0 | 1 | тип кадра, всегда `0x01` (JPEG) |
+| 1 | 4 | номер кадра, uint32 LE |
+| 5 | 2 | ширина, uint16 LE |
+| 7 | 2 | высота, uint16 LE |
+| 9 | 8 | время Unix в мс, int64 LE |
+| 17 | — | сам JPEG |
 
 ## Логические действия
 
-По сети никогда не передаются коды клавиш — только девять имён:
-
-```
-Up  Down  Left  Right  Confirm  Cancel  Menu  Extra1  Extra2
-```
-
-Преобразование «клавиша → действие» делает клиент гостя, обратное
-«действие → клавиша» — клиент хоста. Сервер о клавиатурах не знает ничего.
+Клиент никогда не передаёт коды клавиш, только действия:
+`Up, Down, Left, Right, Confirm, Cancel, Menu, Extra1, Extra2`.
+Какая клавиша соответствует действию — личное дело каждой стороны.
 
 ## Сообщения клиента → сервера
 
-| `t` | Поля | Описание |
-| --- | --- | --- |
-| `register` | `login`, `password` | регистрация |
-| `login` | `login`, `password` | вход |
-| `auth_token` | `token` | вход по сохранённому токену |
-| `list_lobbies` | — | список открытых лобби |
-| `create_lobby` | `name`, `maxPlayers` (2–4) | создать лобби |
-| `join_lobby` | `code` | войти по коду |
-| `leave_lobby` | — | выйти |
-| `start` | — | только хост, нужен хотя бы один гость |
-| `stop` | — | только хост |
-| `input` | `action`, `down` | только гость |
-| `release_all` | — | гость потерял фокус, отпустить всё |
-| `chat` | `text` (≤300) | сообщение всем в лобби |
-| `ping` | `time` | замер задержки |
-| `stats` | — | статистика лобби |
+### Авторизация
+
+| Сообщение | Поля |
+|------------|------|
+| `register` | `login`, `password` |
+| `login` | `login`, `password` |
+| `auth_token` | `token` |
+| `whoami` | — |
+
+### Лобби
+
+| Сообщение | Поля |
+|------------|------|
+| `list_lobbies` | — (админ видит и закрытые) |
+| `create_lobby` | `name`, `maxPlayers` 2-4, `visibility` `public\|private`, `joinMode` `open\|password\|whitelist`, `password`, `allowList[]` |
+| `join_lobby` | `code`, `password` |
+| `leave_lobby` | — |
+| `close_lobby` | — (только хост) |
+| `lobby_settings` | `visibility`, `joinMode`, `password`, `allowList[]` (только хост) |
+| `kick` | `login`, `reason` (только хост) |
+| `ban` | `login`, `reason` (только хост) |
+| `unban` | `login` (только хост) |
+
+### Игра
+
+| Сообщение | Поля |
+|------------|------|
+| `start` / `stop` | — (только хост) |
+| `input` | `action`, `down` (только гость) |
+| `release_all` | — (отпустить всё при потере фокуса) |
+| `chat` | `text` |
+| `ping` / `stats` | — |
+
+### Админ (только роль `admin`)
+
+`admin_users`, `admin_lobbies`, `admin_stats`,
+`admin_set_cosmetic {login, rainbow, color, tag}`, `admin_set_role {login, role}`,
+`admin_ban {login, reason}`, `admin_unban {login}`, `admin_set_password {login, password}`,
+`admin_delete_user {login}`, `admin_close_lobby {code}`, `admin_broadcast {text}`.
 
 ## Сообщения сервера → клиента
 
-| `t` | Поля |
-| --- | --- |
-| `hello` | `version: 2`, `minPlayers: 2`, `maxPlayers: 4`, `actions: [...9]`, `allowRegister` |
-| `auth_ok` | `login`, `token` |
-| `lobby_list` | `lobbies: [краткие описания]` |
+| Сообщение | Содержание |
+|------------|-------------|
+| `hello` | `version: 3`, `allowRegister`, `minPlayers`, `maxPlayers`, `actions[]`, `joinModes[]` |
+| `auth_ok` | `login`, `token`, `role`, `isAdmin`, `cosmetic` |
+| `profile` | `user` — обновлённые данные учётки (например, выдали радугу) |
+| `lobby_list` | `lobbies[]` |
 | `lobby_created` | `lobby`, `you: "host"`, `role: "P1"` |
 | `lobby_joined` | `lobby`, `you: "guest"`, `role` |
-| `peer_joined` / `peer_left` | `lobby`, `login`, `role` |
+| `lobby_state` | `lobby` (у хоста — со списками допуска и банов) |
+| `peer_joined` / `peer_left` | `login`, `role`, `lobby` |
 | `lobby_left` | — |
-| `lobby_closed` | `reason` |
-| `started` / `stopped` | `lobby` |
-| `input` | `role`, `login`, `action`, `down` — только хосту |
-| `release_all` | `role`, `login` — только хосту |
-| `chat` | `from`, `role`, `text` |
-| `pong` | `time` |
-| `stats` | `stats: { frames, bytes, players, maxPlayers, running }` |
+| `lobby_closed` | `code`, `reason` |
+| `kicked` | `scope: "lobby"\|"server"`, `code`, `banned`, `reason` |
+| `announce` | `from`, `text` |
+| `started` / `stopped` | — |
+| `input` | `role`, `login`, `action`, `down` (только хосту) |
+| `release_all` | `role`, `login` |
+| `chat` | `from`, `role`, `cosmetic`, `text` |
+| `pong`, `stats` | служебные |
+| `admin_users` | `users[]` |
+| `admin_lobbies` | `lobbies[]` |
+| `admin_user` / `admin_user_deleted` | `user` / `login` |
+| `admin_lobby_closed` | `code` |
+| `admin_broadcast_ok` | `sent` |
+| `admin_stats` | `stats {uptimeSec, users, online, lobbies, frames, bytes, allowRegister}` |
 | `error` | `code`, `message` |
 
 ### Объект лобби
 
 ```json
 {
-  "code": "K7QM2X",
-  "name": "Вечерняя партия",
+  "code": "AB12CD",
+  "name": "Игра хоста",
   "host": "player_one",
   "maxPlayers": 3,
   "playerCount": 2,
-  "running": false,
-  "createdAt": 1770000000000,
+  "running": true,
+  "createdAt": 1750000000000,
+  "visibility": "public",
+  "joinMode": "open",
+  "hasPassword": false,
   "players": [
-    { "login": "player_one", "role": "P1", "host": true },
-    { "login": "player_two", "role": "P2", "host": false }
+    { "login": "player_one", "role": "P1", "host": true, "admin": false, "cosmetic": {} }
   ]
 }
 ```
 
+Хосту дополнительно приходят `allowList[]` и `bans[] {login, reason}`.
+
+### Объект украшений (cosmetic)
+
+```json
+{ "rainbow": true, "color": "#ff66cc", "tag": "VIP" }
+```
+
 ## Коды ошибок
 
-`unauthorized`, `bad_json`, `register_disabled`, `bad_login`, `bad_password`,
-`user_exists`, `bad_credentials`, `bad_token`, `no_lobby`, `lobby_full`,
-`self_join`, `not_host`, `not_guest`, `no_guest`, `bad_action`,
-`bad_max_players`, `unknown_type`, `internal`.
+`unauthorized, forbidden, banned, bad_json, register_disabled, bad_login, bad_password,
+user_exists, bad_credentials, bad_token, no_user, no_lobby, no_player, lobby_full,
+lobby_banned, bad_lobby_password, not_invited, self_join, not_host, not_guest, no_guest,
+bad_action, bad_max_players, bad_join_mode, bad_role, bad_text, cannot_ban_admin,
+cannot_demote_owner, cannot_delete_owner, unknown_type, internal`
 
-## Бинарный кадр
+## Ограничения
 
-Заголовок 17 байт, дальше JPEG:
-
-| Смещение | Размер | Значение |
-| --- | --- | --- |
-| 0 | 1 | тип кадра, `0x01` = JPEG |
-| 1 | 4 | номер кадра, uint32 LE |
-| 5 | 2 | ширина, uint16 LE |
-| 7 | 2 | высота, uint16 LE |
-| 9 | 8 | время Unix в мс, int64 LE |
-| 17 | … | тело JPEG |
-
-Сервер пересылает кадр всем гостям без разбора. Если у конкретного гостя
-в буфере накопилось больше 4 МБ, кадр для него пропускается (медленный канал
-одного игрока не тормозит остальных).
-
-## Пример сеанса
-
-```
-← {"t":"hello","version":2,"maxPlayers":4,"actions":[...]}
-→ {"t":"register","login":"player_one","password":"secret123"}
-← {"t":"auth_ok","login":"player_one","token":"..."}
-→ {"t":"create_lobby","name":"Игра","maxPlayers":3}
-← {"t":"lobby_created","role":"P1","lobby":{...}}
-← {"t":"peer_joined","login":"player_two","role":"P2","lobby":{...}}
-→ {"t":"start"}
-← {"t":"started","lobby":{...}}
-→ <бинарные кадры>
-← {"t":"input","role":"P2","login":"player_two","action":"Left","down":true}
-```
-
-## Совместимость
-
-Версия 1 передавала имена клавиш (`{t:"input", key:"Left"}`) и знала только
-двух игроков. Клиенты версии 1 с сервером версии 2 не работают: поле
-`action` обязательно, иначе возвращается `bad_action`. Обновляйте всех сразу.
+- Логин: `^[A-Za-z0-9_.-]{3,24}$`, пароль от 6 символов.
+- Имя лобби — 40 символов, пароль лобби — 60, чат и объявления — 300, причина — 120.
+- Список допуска — до 20 логинов, тег — до 16 символов, цвет — `#RRGGBB`.
+- Код лобби — 6 символов из `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`.
+- Кадр больше `MAX_FRAME_KB` (по умолчанию 2048 КБ) рвёт соединение.
+- Если у гостя в сокете застряло более 4 МБ, кадр ему пропускается.
