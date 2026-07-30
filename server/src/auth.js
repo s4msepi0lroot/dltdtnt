@@ -1,8 +1,4 @@
 'use strict'
-/**
- * Минимальные подписанные токены (аналог JWT, но без зависимостей).
- * Формат: base64url(payloadJson).base64url(HMAC-SHA256(payload, secret))
- */
 const crypto = require('crypto')
 
 function b64u(buf) {
@@ -14,10 +10,6 @@ function unb64u(str) {
 }
 
 class TokenService {
-  /**
-   * @param {string} secret секрет подписи (AUTH_SECRET)
-   * @param {number} ttlSeconds время жизни токена
-   */
   constructor(secret, ttlSeconds = 7 * 24 * 3600) {
     this.secret = secret
     this.ttl = ttlSeconds
@@ -30,7 +22,6 @@ class TokenService {
     return `${body}.${sig}`
   }
 
-  /** @returns {{sub:string,exp:number}|null} */
   verify(token) {
     if (typeof token !== 'string' || !token.includes('.')) return null
     const [body, sig] = token.split('.')

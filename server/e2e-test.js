@@ -1,14 +1,3 @@
-/**
- * Сквозной тест релей-сервера DeltaDotNet (протокол v3).
- *
- * Запуск:  node server/e2e-test.js
- *
- * Тест поднимает настоящий сервер на свободном порту, ходит в него своим
- * мини-клиентом WebSocket (без внешних зависимостей) и проверяет всю цепочку:
- * рукопожатие, авторизацию, лобби, приватность, кик/бан, закрытие лобби
- * и админ-команды.
- */
-
 const http = require('http')
 const net = require('net')
 const os = require('os')
@@ -28,12 +17,6 @@ process.env.ADMIN_LOGIN = 's4msepi0l'
 
 const { server } = require('./src/index')
 
-// ---------------------------------------------------------------- мини-клиент
-
-/**
- * Крошечный WebSocket-клиент: только то, что нужно тесту.
- * Входящие сообщения складываются в очередь, чтобы не было гонок.
- */
 class TestClient {
 	constructor(name) {
 		this.name = name
@@ -89,7 +72,6 @@ class TestClient {
 		})
 	}
 
-	/** Разбирает все целые кадры, которые уже пришли в буфер. */
 	drainFrames() {
 		for (;;) {
 			if (this.buffer.length < 2) return
@@ -117,7 +99,6 @@ class TestClient {
 				try {
 					this.push(JSON.parse(payload.toString('utf8')))
 				} catch {
-					/* мусор игнорируем */
 				}
 			} else if (opcode === 0x2) {
 				this.binaries.push(Buffer.from(payload))
@@ -165,11 +146,6 @@ class TestClient {
 		this.sendFrame(0x2, buffer)
 	}
 
-	/**
-	 * Ждёт сообщение указанного типа, вынимая его из очереди.
-	 * Важно: после завершения опрос обязательно останавливается, иначе старое
-	 * ожидание продолжает работать и выдёргивает чужие сообщения из очереди.
-	 */
 	wait(type, timeout = TIMEOUT) {
 		const deadline = Date.now() + timeout
 		return new Promise((resolve, reject) => {
@@ -197,12 +173,10 @@ class TestClient {
 		try {
 			this.socket.destroy()
 		} catch {
-			/* уже закрыт */
 		}
 	}
 }
 
-// -------------------------------------------------------------------- хелперы
 
 function assert(condition, message) {
 	if (!condition) throw new Error(message)
@@ -221,7 +195,6 @@ async function makeUser(name, login, password) {
 	return { client, auth }
 }
 
-/** Минимальный кадр видео: 17 байт заголовка плюс пара байт "картинки". */
 function fakeFrame(sequence) {
 	const frame = Buffer.alloc(21)
 	frame[0] = 0x01
@@ -232,10 +205,7 @@ function fakeFrame(sequence) {
 	return frame
 }
 
-// ---------------------------------------------------------------------- тесты
-
 async function main() {
-	// 0. Рукопожатие и версия протокола
 	const host = new TestClient('host')
 	await host.connect()
 	const hello = await host.wait('hello')
@@ -243,7 +213,6 @@ async function main() {
 	assert(Array.isArray(hello.joinModes) && hello.joinModes.includes('whitelist'), 'нет списка режимов входа')
 	ok('0. рукопожатие WebSocket и протокол v3')
 
-	// 1. Авторизация и признак администратора
 	host.send({ t: 'register', login: 'player_one', password: 'secret123' })
 	const hostAuth = await host.wait('auth_ok')
 	assert(hostAuth.login === 'player_one', 'неверный логин в auth_ok')
@@ -253,7 +222,6 @@ async function main() {
 	const three = await makeUser('guest3', 'player_three', 'secret789')
 	ok('1. авторизация')
 
-	// 2. Открытое лобби на 3 игроков
 	host.send({ t: 'create_lobby', name: 'Тестовая игра', maxPlayers: 3 })
 	const created = await host.wait('lobby_created')
 	const code = created.lobby.code
@@ -271,7 +239,6 @@ async function main() {
 	await host.wait('peer_joined')
 	ok('2. лобби на 3 игроков')
 
-	// 3. Старт, видео и действия
 	host.send({ t: 'start' })
 	await host.wait('started')
 	await two.client.wait('started')
@@ -290,14 +257,12 @@ async function main() {
 	assert(badAction.code === 'bad_action', 'неизвестное действие должно отклоняться')
 	ok('3. трансляция и ввод')
 
-	// 4. Кик игрока хостом
 	host.send({ t: 'kick', login: 'player_three', reason: 'тест' })
 	const kicked = await three.client.wait('kicked')
 	assert(kicked.scope === 'lobby' && kicked.banned !== true, 'кик не должен быть баном')
 	await host.wait('lobby_state')
 	ok('4. кик игрока')
 
-	// 5. Бан в лобби: повторный вход запрещён
 	host.send({ t: 'ban', login: 'player_two', reason: 'тест бана' })
 	const banned = await two.client.wait('kicked')
 	assert(banned.banned === true, 'бан должен помечаться флагом banned')
@@ -314,7 +279,6 @@ async function main() {
 	await host.wait('peer_joined')
 	ok('5. бан и разбан в лобби')
 
-	// 6. Закрытое лобби: пароль и список логинов
 	host.send({ t: 'lobby_settings', visibility: 'private', joinMode: 'password', password: 'hunter22' })
 	await host.wait('lobby_state')
 
@@ -346,7 +310,6 @@ async function main() {
 	assert(notInvited.code === 'not_invited', 'нужна ошибка not_invited, пришло ' + notInvited.code)
 	ok('6. закрытое лобби по паролю и по списку логинов')
 
-	// 7. Закрытие лобби хостом
 	host.send({ t: 'close_lobby' })
 	const closedForGuest = await two.client.wait('lobby_closed')
 	assert(closedForGuest.code === code, 'гостю должно прийти lobby_closed с кодом лобби')
@@ -357,7 +320,6 @@ async function main() {
 	assert(gone.code === 'no_lobby', 'после закрытия лобби должно исчезнуть')
 	ok('7. закрытие лобби хостом')
 
-	// 8. Админка: только для s4msepi0l
 	host.send({ t: 'admin_users' })
 	const forbidden = await host.wait('error')
 	assert(forbidden.code === 'forbidden', 'обычному игроку админка запрещена, пришло ' + forbidden.code)
@@ -369,7 +331,6 @@ async function main() {
 	const users = await admin.client.wait('admin_users')
 	assert(users.users.some((u) => u.login === 'player_one'), 'в списке должны быть все игроки')
 
-	// Переливающийся ник выдаётся и тут же доезжает до самого игрока.
 	admin.client.send({ t: 'admin_set_cosmetic', login: 'player_one', rainbow: true, tag: 'VIP' })
 	const updated = await admin.client.wait('admin_user')
 	assert(updated.user.cosmetic.rainbow === true, 'радуга не выдалась')
@@ -386,7 +347,6 @@ async function main() {
 	assert(typeof stats.stats.online === 'number', 'в статистике нет поля online')
 	ok('8. админ-панель и переливающиеся ники')
 
-	// 9. Админ банит на всём сервере и закрывает чужое лобби
 	two.client.send({ t: 'create_lobby', name: 'Лобби гостя', maxPlayers: 2 })
 	const guestLobby = await two.client.wait('lobby_created')
 	admin.client.send({ t: 'admin_close_lobby', code: guestLobby.lobby.code })
@@ -406,7 +366,6 @@ async function main() {
 	assert(bannedLogin.code === 'banned', 'забаненный не должен входить, пришло ' + bannedLogin.code)
 	ok('9. бан на сервере и закрытие чужого лобби')
 
-	// 10. Защита владельца админки
 	admin.client.send({ t: 'admin_set_role', login: 's4msepi0l', role: 'user' })
 	const demote = await admin.client.wait('error')
 	assert(demote.code === 'cannot_demote_owner', 'владельца админки нельзя разжаловать, пришло ' + demote.code)

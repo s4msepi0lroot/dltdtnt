@@ -1,7 +1,7 @@
 {
   "name": "deltadotnet-relay",
   "version": "1.0.0",
-  "description": "Лёгкий релей-сервер для DeltaDotNet: авторизация, лобби, ретрансляция кадров и ввода. Без внешних зависимостей.",
+  "description": "deltadotnet relay server.",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

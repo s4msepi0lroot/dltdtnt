@@ -1,11 +1,9 @@
-# Лёгкий образ релей-сервера DeltaDotNet (без npm-зависимостей).
 FROM node:20-alpine
 
 WORKDIR /app
 COPY package.json ./
 COPY src ./src
 
-# Файл с пользователями хранится здесь — подключите том, иначе аккаунты сбросятся при рестарте.
 RUN mkdir -p /app/data
 VOLUME ["/app/data"]
 

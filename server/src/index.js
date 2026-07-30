@@ -1,25 +1,4 @@
 'use strict'
-/**
- * DeltaDotNet Relay Server
- * ------------------------
- * Лёгкий сервер-ретранслятор (без P2P) для совместной игры в Deltarune:
- * авторизация, лобби на 2-4 игроков, пересылка видеокадров (хост -> всем)
- * и действий управления (гости -> хосту).
- *
- * ВАЖНО про управление: сервер ничего не знает про конкретные клавиши.
- * Клиент превращает нажатую клавишу в логическое действие (Up, Confirm, ...),
- * а хост обратно превращает действие в ту клавишу, которую ждёт игра.
- *
- * Зависимости: нет (только стандартная библиотека Node.js >= 18).
- *
- * Переменные окружения:
- *   PORT           - порт (по умолчанию 8080)
- *   AUTH_SECRET    - секрет для подписи токенов (обязательно в продакшене)
- *   DATA_FILE      - файл базы пользователей (по умолчанию ./data/users.json)
- *   ALLOW_REGISTER - '0' чтобы запретить регистрацию новых пользователей
- *   MAX_FRAME_KB   - максимальный размер кадра в КБ (по умолчанию 2048)
- *   ADMIN_LOGIN    - логин владельца сервера (по умолчанию s4msepi0l)
- */
 const http = require('http')
 const path = require('path')
 const { attach } = require('./ws')
@@ -35,7 +14,7 @@ const {
 } = require('./lobby')
 
 const PORT = Number(process.env.PORT || 8080)
-const AUTH_SECRET = process.env.AUTH_SECRET || 'dev-insecure-secret-change-me'
+const AUTH_SECRET = process.env.AUTH_SECRET || 'standartkey' /** ИЗМЕНИ КЛЮЧ НА СГЕНЕРИРОВАННЫЙ // CHANGE THE KEY TO THE GENERATED ONE. */
 const DATA_FILE = process.env.DATA_FILE || path.join(process.cwd(), 'data', 'users.json')
 const ALLOW_REGISTER = process.env.ALLOW_REGISTER !== '0'
 const MAX_FRAME_KB = Number(process.env.MAX_FRAME_KB || 2048)
@@ -47,18 +26,12 @@ const store = new UserStore(DATA_FILE, ADMIN_LOGIN)
 const tokens = new TokenService(AUTH_SECRET)
 const lobbies = new LobbyManager()
 
-/** Все живые соединения - нужно админке для списка онлайна и рассылки. */
 const connections = new Set()
 
-if (AUTH_SECRET === 'dev-insecure-secret-change-me') {
+if (AUTH_SECRET === 'standartkey') {
   console.warn('[warn] AUTH_SECRET не задан - используется небезопасное значение по умолчанию')
 }
 
-/**
- * Список логических действий. Это единственное, что сервер валидирует
- * в сообщениях ввода. Какая физическая клавиша соответствует действию -
- * личное дело каждого клиента.
- */
 const ACTIONS = new Set([
   'Up',
   'Down',
@@ -71,7 +44,6 @@ const ACTIONS = new Set([
   'Extra2',
 ])
 
-// ---------------------------------------------------------------- HTTP часть
 const server = http.createServer((req, res) => {
   if (req.url === '/health' || req.url === '/') {
     res.writeHead(200, { 'content-type': 'application/json' })
@@ -93,7 +65,6 @@ const server = http.createServer((req, res) => {
   res.end('not found')
 })
 
-// ------------------------------------------------------------ Вспомогательное
 function fail(conn, code, message, extra = {}) {
   conn.sendJson({ t: 'error', code, message, ...extra })
 }
@@ -106,7 +77,6 @@ function requireAuth(conn) {
   return true
 }
 
-/** Проверка прав админа для всех admin_* команд. */
 function requireAdmin(conn) {
   if (!requireAuth(conn)) return false
   if (conn.ctx.role !== 'admin') {
@@ -116,7 +86,6 @@ function requireAdmin(conn) {
   return true
 }
 
-/** Возвращает лобби текущего соединения при условии, что оно - хост. */
 function hostLobby(conn, errorMessage) {
   const lobby = lobbies.get(conn.ctx.lobbyCode)
   if (!lobby || lobby.host !== conn) {
@@ -126,18 +95,15 @@ function hostLobby(conn, errorMessage) {
   return lobby
 }
 
-/** Соединения конкретного пользователя (один логин может быть открыт дважды). */
 function connectionsOf(login) {
   const key = String(login || '').toLowerCase()
   return [...connections].filter((c) => String(c.ctx.login || '').toLowerCase() === key)
 }
 
-/** Отправляет хосту обновлённое состояние лобби со списками допуска и банов. */
 function sendHostView(lobby) {
   lobby.host.sendJson({ t: 'lobby_state', lobby: lobby.toPublic(true) })
 }
 
-/** Обновляет косметику на всех соединениях игрока и сообщает ему об этом. */
 function pushCosmetic(login) {
   const user = store.publicUser(login)
   if (!user) return
@@ -146,14 +112,12 @@ function pushCosmetic(login) {
     conn.ctx.role = user.role
     conn.sendJson({ t: 'profile', user })
   }
-  // Если игрок сейчас в лобби - обновляем список игроков у всех участников.
   for (const conn of connectionsOf(login)) {
     const lobby = lobbies.get(conn.ctx.lobbyCode)
     if (lobby) lobby.broadcast({ t: 'lobby_state', lobby: lobby.toPublic() })
   }
 }
 
-/** Отключает все соединения пользователя (после бана или удаления). */
 function disconnectUser(login, reason) {
   for (const conn of connectionsOf(login)) {
     conn.sendJson({ t: 'kicked', scope: 'server', reason })
@@ -162,7 +126,6 @@ function disconnectUser(login, reason) {
   }
 }
 
-// ------------------------------------------------------------- WebSocket часть
 attach(server, {
   path: '/ws',
   maxPayload: MAX_FRAME_KB * 1024,
@@ -207,7 +170,6 @@ attach(server, {
   },
 })
 
-/** Общий ответ при успешном входе: логин, токен, роль и украшения. */
 function completeAuth(conn, user, token) {
   if (user.banned) {
     fail(conn, 'banned', 'Вы забанены на сервере: ' + (user.banReason || 'без указания причины'))
@@ -227,10 +189,8 @@ function completeAuth(conn, user, token) {
   })
 }
 
-/** Обработка управляющих (JSON) сообщений. */
 function onJson(conn, m) {
   switch (m.t) {
-    // ---------------------------------------------------------- авторизация
     case 'register': {
       if (!ALLOW_REGISTER) return fail(conn, 'register_disabled', 'Регистрация отключена')
       const login = String(m.login || '').trim()
@@ -268,7 +228,6 @@ function onJson(conn, m) {
       return conn.sendJson({ t: 'profile', user: store.publicUser(conn.ctx.login) })
     }
 
-    // --------------------------------------------------------------- лобби
     case 'list_lobbies': {
       if (!requireAuth(conn)) return
       const includePrivate = conn.ctx.role === 'admin'
@@ -350,7 +309,6 @@ function onJson(conn, m) {
       return conn.sendJson({ t: 'lobby_left' })
     }
 
-    /** Хост удаляет лобби целиком и возвращается в главное меню. */
     case 'close_lobby': {
       if (!requireAuth(conn)) return
       const lobby = hostLobby(conn, 'Закрыть лобби может только хост')
@@ -360,7 +318,6 @@ function onJson(conn, m) {
       return
     }
 
-    /** Изменение настроек доступа уже созданного лобби. */
     case 'lobby_settings': {
       if (!requireAuth(conn)) return
       const lobby = hostLobby(conn, 'Менять настройки может только хост')
@@ -388,7 +345,6 @@ function onJson(conn, m) {
       return
     }
 
-    /** Выгнать игрока из лобби (без бана, может вернуться). */
     case 'kick': {
       if (!requireAuth(conn)) return
       const lobby = hostLobby(conn, 'Выгонять игроков может только хост')
@@ -405,7 +361,6 @@ function onJson(conn, m) {
       return
     }
 
-    /** Забанить игрока в этом лобби: выгоняем и больше не пускаем. */
     case 'ban': {
       if (!requireAuth(conn)) return
       const lobby = hostLobby(conn, 'Банить игроков может только хост')
@@ -462,7 +417,6 @@ function onJson(conn, m) {
       return
     }
 
-    // ----------------------------------------------------------------- ввод
     case 'input': {
       if (!requireAuth(conn)) return
       const lobby = lobbies.get(conn.ctx.lobbyCode)
@@ -490,7 +444,6 @@ function onJson(conn, m) {
       return
     }
 
-    // ------------------------------------------------------------- прочее
     case 'chat': {
       if (!requireAuth(conn)) return
       const lobby = lobbies.get(conn.ctx.lobbyCode)
@@ -525,9 +478,6 @@ function onJson(conn, m) {
         },
       })
     }
-
-    // ------------------------------------------------------------- админка
-    // Все команды ниже доступны только учётной записи с ролью admin.
 
     case 'admin_users': {
       if (!requireAdmin(conn)) return
@@ -567,7 +517,6 @@ function onJson(conn, m) {
       })
     }
 
-    /** Выдача переливающегося ника, своего цвета или тега. */
     case 'admin_set_cosmetic': {
       if (!requireAdmin(conn)) return
       const login = String(m.login || '')
@@ -641,7 +590,6 @@ function onJson(conn, m) {
       return conn.sendJson({ t: 'admin_user_deleted', login })
     }
 
-    /** Закрыть любое лобби на сервере по коду. */
     case 'admin_close_lobby': {
       if (!requireAdmin(conn)) return
       const lobby = lobbies.get(m.code)
@@ -651,7 +599,6 @@ function onJson(conn, m) {
       return conn.sendJson({ t: 'admin_lobby_closed', code: String(m.code).toUpperCase() })
     }
 
-    /** Сообщение всем онлайн-игрокам. */
     case 'admin_broadcast': {
       if (!requireAdmin(conn)) return
       const text = String(m.text || '').slice(0, 300)
@@ -670,11 +617,6 @@ function onJson(conn, m) {
   }
 }
 
-/**
- * Бинарные сообщения - это видеокадры. Шлёт их только хост, получают
- * все остальные. Если конкретный зритель не успевает вычитывать - кадр для
- * него пропускается, чтобы не растить задержку у остальных.
- */
 function onBinary(conn, data) {
   const lobby = lobbies.get(conn.ctx.lobbyCode)
   if (!lobby || lobby.host !== conn) return

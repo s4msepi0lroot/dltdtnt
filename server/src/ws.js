@@ -1,10 +1,4 @@
 'use strict'
-/**
- * Минимальная реализация WebSocket-сервера (RFC 6455) без внешних зависимостей.
- * Поддерживает: handshake, text/binary кадры, фрагментацию, ping/pong, close.
- *
- * Экспортирует attach(httpServer, { onConnection, maxPayload }).
- */
 const crypto = require('crypto')
 const { EventEmitter } = require('events')
 
@@ -19,7 +13,6 @@ const OP = {
   PONG: 0xa,
 }
 
-/** Собирает кадр WebSocket. Сервер отправляет данные без маски. */
 function encodeFrame(opcode, payload, { mask = false, fin = true } = {}) {
   const data = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload), 'utf8')
   const len = data.length
@@ -46,10 +39,6 @@ function encodeFrame(opcode, payload, { mask = false, fin = true } = {}) {
   return Buffer.concat([header, key, masked])
 }
 
-/**
- * Одно WebSocket-соединение.
- * События: 'message' ({ type: 'text'|'binary', data }), 'close', 'error'.
- */
 class WsConnection extends EventEmitter {
   constructor(socket, opts = {}) {
     super()
@@ -60,12 +49,10 @@ class WsConnection extends EventEmitter {
     this.fragments = []
     this.fragmentOpcode = null
     this.isAlive = true
-    /** Произвольные данные приложения (пользователь, лобби и т.п.). */
     this.ctx = {}
 
     socket.on('data', (chunk) => this._onData(chunk))
     socket.on('close', () => this._finish())
-    // Некоторые клиенты рвут соединение так, что 'close' приходит с задержкой.
     socket.on('end', () => {
       this._finish()
       try {
@@ -98,7 +85,6 @@ class WsConnection extends EventEmitter {
     this._send(OP.PING, Buffer.alloc(0))
   }
 
-  /** Размер данных, ожидающих отправки в сокете (для backpressure). */
   get bufferedAmount() {
     return this.socket.writableLength || 0
   }
@@ -135,7 +121,6 @@ class WsConnection extends EventEmitter {
 
   _onData(chunk) {
     this.buffer = this.buffer.length ? Buffer.concat([this.buffer, chunk]) : chunk
-    // eslint-disable-next-line no-constant-condition
     while (true) {
       const frame = this._readFrame()
       if (!frame) break
@@ -144,7 +129,6 @@ class WsConnection extends EventEmitter {
     }
   }
 
-  /** Пытается вычитать один кадр из накопленного буфера. */
   _readFrame() {
     const buf = this.buffer
     if (buf.length < 2) return null
@@ -233,11 +217,6 @@ class WsConnection extends EventEmitter {
   }
 }
 
-/**
- * Подключает WebSocket-обработчик к обычному http.Server.
- * @param {import('http').Server} server
- * @param {{ path?: string, onConnection: (conn: WsConnection, req) => void, maxPayload?: number, heartbeatMs?: number }} opts
- */
 function attach(server, opts) {
   const path = opts.path || '/ws'
   const connections = new Set()
@@ -264,7 +243,6 @@ function attach(server, opts) {
     opts.onConnection(conn, req)
   })
 
-  // Heartbeat: отключаем «мёртвые» соединения.
   const interval = setInterval(() => {
     for (const conn of connections) {
       if (!conn.isAlive) {
