@@ -75,7 +75,7 @@ public sealed class ViewerForm : Form
         var header = new Panel { Dock = DockStyle.Top, Height = 56, BackColor = DeltaTheme.Background };
         Controls.Add(header);
 
-        var roleLabel = DeltaTheme.Caption("ВЫ " + _role, DeltaTheme.Text, DeltaTheme.FontBig);
+        var roleLabel = DeltaTheme.Caption("ВЫ — ИГРОК " + _role, DeltaTheme.Text, DeltaTheme.FontBig);
         roleLabel.Location = new Point(20, 8);
         header.Controls.Add(roleLabel);
 
@@ -105,7 +105,7 @@ public sealed class ViewerForm : Form
         _screen.BringToFront();
 
         UpdateKeysLabel();
-        UpdateStatus("Ожидаем старт от хоста");
+        UpdateStatus("Ожидаем старт игры от хоста");
     }
 
     private void UpdateStatus(string text, Color? color = null)
@@ -203,7 +203,7 @@ public sealed class ViewerForm : Form
         ReleaseAll();
         using var dialog = new BindingsForm(
             _bindings, _role,
-            "УПРАВЛЕНИЕ: " + _role,
+            "МОЁ УПРАВЛЕНИЕ — " + _role,
             "Какие клавиши вы жмёте у себя. Остальных это не касается.");
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
@@ -232,7 +232,7 @@ public sealed class ViewerForm : Form
                 if (IsDisposed) return;
                 _screen.Invalidate();
                 long lag = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - timestampMs;
-                UpdateStatus($"Кадров: {_framesReceived} - задержка ~{Math.Max(0, lag)} мс", DeltaTheme.Good);
+                UpdateStatus($"Кадров: {_framesReceived} · задержка ~{Math.Max(0, lag)} мс", DeltaTheme.Good);
             }));
         }
     }

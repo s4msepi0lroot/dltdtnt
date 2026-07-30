@@ -48,7 +48,7 @@ public sealed class BindingsForm : Form
         sub.Location = new Point(30, 62);
         Controls.Add(sub);
 
-        _hint = DeltaTheme.Caption("* Нажмите на действие, затем нужную клавишу. Esc - отмена.", DeltaTheme.Accent, DeltaTheme.FontSmall);
+        _hint = DeltaTheme.Caption("* Нажмите на действие, затем — нужную клавишу. Esc — отмена.", DeltaTheme.Accent, DeltaTheme.FontSmall);
         _hint.Location = new Point(30, 86);
         Controls.Add(_hint);
 

@@ -123,8 +123,8 @@ public static class GameAction
         [Confirm] = "Подтвердить (Z / Enter)",
         [Cancel] = "Отмена (X / Shift)",
         [Menu] = "Меню (C / Ctrl)",
-        [Extra1] = "Дополнительная кл. 1",
-        [Extra2] = "Дополнительная кл. 2",
+        [Extra1] = "Дополнительная 1",
+        [Extra2] = "Дополнительная 2",
     };
 
     public static string Title(string action)

@@ -29,7 +29,7 @@ public sealed class AdminForm : Form
     {
         _client = client;
 
-        Text = "DeltaDotNet - админка";
+        Text = "DeltaDotNet — админка";
         ClientSize = new Size(980, 700);
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
@@ -48,7 +48,7 @@ public sealed class AdminForm : Form
     // ------------------------------------------------------------------ вёрстка
     private void Build()
     {
-        var title = DeltaTheme.Title("АДМИНКА");
+        var title = DeltaTheme.Title("АДМИН-ПАНЕЛЬ");
         title.Location = new Point(28, 20);
         Controls.Add(title);
 

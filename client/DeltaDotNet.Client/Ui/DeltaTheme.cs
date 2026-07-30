@@ -132,7 +132,7 @@ public static class DeltaTheme
 }
 
 /// <summary>Кнопка в стиле игрового меню: рамка, жёлтый текст при наведении и сердечко-курсор.</summary>
-public sealed class DeltaButton : Button
+public class DeltaButton : Button
 {
     private bool _hover;
 
@@ -177,7 +177,7 @@ public sealed class DeltaButton : Button
 }
 
 /// <summary>Поле ввода с белой рамкой и чёрным фоном.</summary>
-public sealed class DeltaTextBox : Panel
+public class DeltaTextBox : Panel
 {
     public TextBox Inner { get; }
 
@@ -215,7 +215,7 @@ public sealed class DeltaTextBox : Panel
 }
 
 /// <summary>Список с собственной отрисовкой: выбранная строка жёлтая и с сердечком.</summary>
-public sealed class DeltaListBox : ListBox
+public class DeltaListBox : ListBox
 {
     public DeltaListBox()
     {
@@ -250,7 +250,7 @@ public sealed class DeltaListBox : ListBox
 }
 
 /// <summary>Панель с рамкой и необязательным заголовком.</summary>
-public sealed class DeltaPanel : Panel
+public class DeltaPanel : Panel
 {
     public string Caption { get; set; }
 

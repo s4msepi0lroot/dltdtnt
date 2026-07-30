@@ -30,7 +30,7 @@ public sealed class SettingsForm : Form
     {
         _cfg = cfg;
 
-        Text = "Delta.Dot.Net - качество";
+        Text = "DeltaDotNet — качество";
         ClientSize = new Size(560, 520);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;

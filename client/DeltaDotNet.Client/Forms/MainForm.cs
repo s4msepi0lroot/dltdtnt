@@ -84,7 +84,7 @@ public sealed class MainForm : Form
         {
             Location = new Point(30, 18),
             Size = new Size(560, 84),
-            FallbackText = "Delta.Dot.Net",
+            FallbackText = "DELTA . DOT . NET",
             Subtitle = "* Совместная игра через сеть для локального мультиплеера Deltarune",
         };
         Controls.Add(banner);
@@ -136,7 +136,7 @@ public sealed class MainForm : Form
         btnRegister.Click += async (s, e) => await AuthAsync("register");
         Add(btnRegister, 204, 168, 174, 40);
 
-        var btnBindings = new DeltaButton { Text = "УПРАВЛЕНИЕ" };
+        var btnBindings = new DeltaButton { Text = "МОЁ УПРАВЛЕНИЕ" };
         btnBindings.Click += (s, e) => EditMyBindings();
         Add(btnBindings, 18, 220, 174, 40);
 
@@ -169,7 +169,7 @@ public sealed class MainForm : Form
             panel.Controls.Add(c);
         }
 
-        Add(DeltaTheme.Caption("Название лобби", DeltaTheme.TextDim, DeltaTheme.FontSmall), 18, 36, 200, 16);
+        Add(DeltaTheme.Caption("Название игры", DeltaTheme.TextDim, DeltaTheme.FontSmall), 18, 36, 200, 16);
         Add(_lobbyName, 18, 56, 398, 34);
 
         // Количество игроков: кнопка-переключатель 2 → 3 → 4 → 2.
@@ -194,7 +194,7 @@ public sealed class MainForm : Form
         Add(DeltaTheme.Caption("Код лобби", DeltaTheme.TextDim, DeltaTheme.FontSmall), 18, 198, 190, 16);
         Add(_code, 18, 218, 195, 34);
 
-        Add(DeltaTheme.Caption("Пароль (если закрытое лобби)", DeltaTheme.TextDim, DeltaTheme.FontSmall), 221, 198, 200, 16);
+        Add(DeltaTheme.Caption("Пароль (если закрытое)", DeltaTheme.TextDim, DeltaTheme.FontSmall), 221, 198, 200, 16);
         Add(_joinPassword, 221, 218, 195, 34);
 
         _btnJoin = new DeltaButton { Text = "ПОДКЛЮЧИТЬСЯ" };
@@ -206,7 +206,7 @@ public sealed class MainForm : Form
         Add(_btnRefresh, 221, 262, 195, 40);
 
         // Список активных лобби внизу окна (закрытые в списке не показываются).
-        var listPanel = new DeltaPanel("АКТИВНЫЕ ЛОББИ") { Location = new Point(30, 462), Size = new Size(860, 210) };
+        var listPanel = new DeltaPanel("АКТИВНЫЕ ИГРЫ") { Location = new Point(30, 462), Size = new Size(860, 210) };
         Controls.Add(listPanel);
 
         _lobbies.Location = new Point(16, 34);
@@ -249,7 +249,7 @@ public sealed class MainForm : Form
             case "password":
             {
                 var list = PromptForm.Ask(this, "Кого пускать",
-                    "Логины через запятую, только они смогут зайти",
+                    "Логины через запятую — только они смогут зайти",
                     string.Join(", ", _cfg.LobbyAllowList));
                 if (string.IsNullOrWhiteSpace(list)) return;
                 _cfg.LobbyJoinMode = "whitelist";
@@ -369,7 +369,7 @@ public sealed class MainForm : Form
         var role = picker.SelectedRole;
         using var dialog = new BindingsForm(
             _cfg.GetMyBindings(role), role,
-            "УПРАВЛЕНИЕ: " + role,
+            "МОЁ УПРАВЛЕНИЕ — " + role,
             "Какие клавиши вы жмёте у себя, играя за " + role);
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
@@ -419,8 +419,8 @@ public sealed class MainForm : Form
 
                     string access = lobby.TryGetProperty("joinMode", out var jm) ? jm.GetString() switch
                     {
-                        "password" => "   - по паролю",
-                        "whitelist" => "   - по списку логинов",
+                        "password" => "   — по паролю",
+                        "whitelist" => "   — по списку логинов",
                         _ => "",
                     } : "";
 

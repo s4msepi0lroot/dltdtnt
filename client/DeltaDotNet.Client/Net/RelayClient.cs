@@ -260,11 +260,11 @@ public sealed class RelayClient : IDisposable
             sb.AppendLine();
             sb.AppendLine();
             sb.AppendLine("Сервер вернул неверный ответ на WebSocket-рукопожатие. Обычно это значит,");
-            sb.AppendLine("что трафик идёт не напрямую. Либо админ рукожоп.");
-            sb.AppendLine("  1. Выключите VPN или прокси");
+            sb.AppendLine("что трафик идёт не напрямую. Что проверить:");
+            sb.AppendLine("  1. Выключите VPN / прокси-клиент (Clash, Shadowsocks, WARP и подобные)");
             sb.AppendLine("     либо добавьте адрес сервера в список исключений.");
-            sb.AppendLine("  2. Отключите проверку трафика в антивирусе.");
-            sb.AppendLine("  3. Windows: Параметры - Сеть - Прокси-сервер - выключить.");
+            sb.AppendLine("  2. Отключите проверку трафика в антивирусе (Kaspersky, ESET, Avast).");
+            sb.AppendLine("  3. Windows: Параметры → Сеть → Прокси-сервер → выключить.");
             sb.AppendLine("  4. Убедитесь, что по адресу отвечает именно deltadotnet-relay, а не");
             sb.AppendLine("     другой сервис на том же порту.");
             sb.Append("Ответ /health: ").Append(await ProbeHealthAsync(uri));
