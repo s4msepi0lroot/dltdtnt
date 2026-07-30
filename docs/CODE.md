@@ -76,7 +76,7 @@
 
 Экспортирует `{ server, store, tokens, lobbies, ALLOWED_KEYS }` — удобно для тестов и встраивания.
 
-## `test/e2e.js` — сквозной тест
+## `e2e-test.js` — сквозной тест
 
 Запускает сервер в отдельном процессе (`PORT=18081`, временный `DATA_FILE`) и проверяет:
 
@@ -86,7 +86,7 @@
 4. **Ввод** — `Left` от P2 доходит, `W` от P2 отклоняется (`key_not_allowed`), `release_all`, чат.
 5. **Отключение** — при обрыве гостя хост получает `peer_left`.
 
-Запуск: `node server/test/e2e.js` (или `npm test` в `server/`). Этот же тест гоняется в CI.
+Запуск: `node server/e2e-test.js` (или `npm test` в `server/`). Этот же тест гоняется в CI.
 
 ---
 

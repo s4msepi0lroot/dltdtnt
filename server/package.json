@@ -5,7 +5,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node test/e2e.js"
+    "test": "node e2e-test.js"
   },
   "engines": {
     "node": ">=18"

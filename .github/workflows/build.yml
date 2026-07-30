@@ -51,7 +51,7 @@ jobs:
         run: for f in server/src/*.js; do node --check "$f"; done
 
       - name: E2E-тесты
-        run: node server/test/e2e.js
+        run: node server/e2e-test.js
 
       - name: Собрать артефакт
         run: |

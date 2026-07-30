@@ -87,7 +87,7 @@ coop-stream/
 │  │  ├─ auth.js      — токены HMAC
 │  │  ├─ lobby.js     — лобби и коды
 │  │  └─ index.js     — HTTP + маршрутизация сообщений
-│  ├─ test/e2e.js     — сквозной тест (запускается в CI)
+│  ├─ e2e-test.js     — сквозной тест (запускается в CI)
 │  ├─ Dockerfile
 │  └─ .env.example
 ├─ client/CoopStream.Client/

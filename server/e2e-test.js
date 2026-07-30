@@ -3,13 +3,14 @@
  * Сквозной (end-to-end) тест relay-сервера.
  *
  * Запускает сервер в отдельном процессе и проверяет весь сценарий:
+ *   0. корректность WebSocket-рукопожатия (Sec-WebSocket-Accept)
  *   1. авторизация (регистрация, ошибки, вход по токену)
  *   2. лобби (создание, список, подключение)
  *   3. старт игры и пересылка видеокадра
  *   4. ввод с клавиатуры и белый список клавиш
  *   5. корректная обработка обрыва связи
  *
- * Запуск: node server/test/e2e.js   (или npm test в папке server)
+ * Запуск: node server/e2e-test.js   (или npm test в папке server)
  */
 const net = require('net')
 const os = require('os')
@@ -17,12 +18,12 @@ const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const { spawn } = require('child_process')
-const { encodeFrame, OP } = require('../src/ws')
+const { encodeFrame, OP } = require('./src/ws')
 
 const PORT = Number(process.env.TEST_PORT || 18081)
 const TIMEOUT = 4000
+const WS_GUID = '258EAFA5-E914-47DA-95CA-5AB0DC85B11F'
 
-// --------------------------------------------------------------- утилиты
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 function assert(cond, message) {
@@ -31,8 +32,9 @@ function assert(cond, message) {
 
 /**
  * Минимальный WebSocket-клиент на сыром сокете.
- * Входящие сообщения кладёт в очереди, чтобы ничего не терялось
- * между ожиданиями (гонка была реальной проблемой при отладке).
+ * Входящие сообщения кладёт в очереди, чтобы ничего не терялось между ожиданиями.
+ * Также проверяет заголовок Sec-WebSocket-Accept — точно так же, как это делает
+ * ClientWebSocket в .NET.
  */
 class TestClient {
   constructor(name) {
@@ -42,11 +44,14 @@ class TestClient {
     this.buffer = Buffer.alloc(0)
     this.handshaked = false
     this.closed = false
+    this.acceptHeader = null
+    this.expectedAccept = null
   }
 
   connect(port) {
     return new Promise((resolve, reject) => {
       const key = crypto.randomBytes(16).toString('base64')
+      this.expectedAccept = crypto.createHash('sha1').update(key + WS_GUID).digest('base64')
       this.socket = net.connect(port, '127.0.0.1', () => {
         this.socket.write(
           'GET /ws HTTP/1.1\r\n' +
@@ -77,12 +82,13 @@ class TestClient {
         onError(new Error('handshake failed: ' + head))
         return
       }
+      const m = head.match(/Sec-WebSocket-Accept:\s*(\S+)/i)
+      this.acceptHeader = m ? m[1] : null
       this.buffer = this.buffer.subarray(idx + 4)
       this.handshaked = true
       onHandshake()
     }
 
-    // Разбираем столько кадров, сколько накопилось в буфере.
     for (;;) {
       const buf = this.buffer
       if (buf.length < 2) return
@@ -139,7 +145,6 @@ class TestClient {
     this._write(encodeFrame(OP.BINARY, buf, { mask: true }))
   }
 
-  /** Ждёт первое JSON-сообщение, подходящее под предикат, и убирает его из очереди. */
   async waitJson(pred, label) {
     const deadline = Date.now() + TIMEOUT
     const test = typeof pred === 'string' ? (m) => m.t === pred : pred
@@ -169,11 +174,10 @@ class TestClient {
   }
 }
 
-// ------------------------------------------------------------------- тесты
 async function run() {
   const dataFile = path.join(os.tmpdir(), `coopstream-test-${Date.now()}.json`)
 
-  const child = spawn(process.execPath, [path.join(__dirname, '..', 'src', 'index.js')], {
+  const child = spawn(process.execPath, [path.join(__dirname, 'src', 'index.js')], {
     env: {
       ...process.env,
       PORT: String(PORT),
@@ -186,7 +190,6 @@ async function run() {
   child.stdout.on('data', () => {})
   child.stderr.on('data', (d) => process.stderr.write('[server] ' + d))
 
-  // Ждём, пока порт откроется.
   for (let i = 0; i < 100; i++) {
     const ok = await new Promise((resolve) => {
       const s = net.connect(PORT, '127.0.0.1')
@@ -204,12 +207,20 @@ async function run() {
   const guest = new TestClient('guest')
 
   try {
-    // ------------------------------------------------- 1. авторизация
+    // -------------------------------------------------- 0. рукопожатие
     await host.connect(PORT)
     await guest.connect(PORT)
+    assert(
+      host.acceptHeader === host.expectedAccept,
+      `Sec-WebSocket-Accept неверен: ожидался ${host.expectedAccept}, получен ${host.acceptHeader}`
+    )
+    assert(guest.acceptHeader === guest.expectedAccept, 'Sec-WebSocket-Accept неверен у второго клиента')
+    console.log('  [ok] 0. рукопожатие WebSocket')
+
     await host.waitJson('hello')
     await guest.waitJson('hello')
 
+    // ------------------------------------------------- 1. авторизация
     host.sendJson({ t: 'create_lobby', name: 'no auth' })
     const denied = await host.waitJson('error')
     assert(denied.code === 'unauthorized', 'действие без входа должно отклоняться')
@@ -231,7 +242,6 @@ async function run() {
     guest.sendJson({ t: 'login', login: 'player_two', password: 'wrong' })
     assert((await guest.waitJson('error')).code === 'bad_credentials', 'неверный пароль')
 
-    // вход по токену новым соединением
     const tokenClient = new TestClient('token')
     await tokenClient.connect(PORT)
     await tokenClient.waitJson('hello')
@@ -277,7 +287,6 @@ async function run() {
     await host.waitJson('started')
     await guest.waitJson('started')
 
-    // Заголовок 17 байт + «картинка» 1000 байт.
     const frame = Buffer.alloc(17 + 1000)
     frame[0] = 0x01
     frame.writeUInt32LE(42, 1)
@@ -292,7 +301,6 @@ async function run() {
     assert(received.equals(frame), 'кадр дошёл байт-в-байт')
     assert(received.readUInt32LE(1) === 42, 'номер кадра сохранён')
 
-    // Кадры в обратную сторону сервер не пересылает.
     guest.sendBinary(frame)
     await sleep(150)
     assert(host.binaryInbox.length === 0, 'гость не может транслировать видео')
@@ -307,7 +315,7 @@ async function run() {
     guest.sendJson({ t: 'input', key: 'Left', down: false })
     assert((await host.waitJson('input')).down === false, 'отпускание Left дошло')
 
-    for (const key of ['Up', 'Down', 'Right', 'Enter', 'C', 'LShift', 'RShift', 'LCtrl', 'RCtrl']) {
+    for (const key of ['Up', 'Down', 'Right', 'Enter', 'NumEnter', 'C', 'LShift', 'RShift', 'LCtrl', 'RCtrl']) {
       guest.sendJson({ t: 'input', key, down: true })
       assert((await host.waitJson('input')).key === key, `клавиша ${key} разрешена для P2`)
     }
