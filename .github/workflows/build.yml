@@ -1,0 +1,95 @@
+name: build
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  client:
+    name: Сборка Windows-клиента
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore client/CoopStream.Client/CoopStream.Client.csproj
+
+      - name: Build
+        run: dotnet build client/CoopStream.Client/CoopStream.Client.csproj -c Release --no-restore
+
+      - name: Publish (single exe, win-x64)
+        run: >
+          dotnet publish client/CoopStream.Client/CoopStream.Client.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -o publish/client
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CoopStream-client-win-x64
+          path: publish/client/CoopStream.exe
+          if-no-files-found: error
+
+  server:
+    name: Проверка и упаковка сервера
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Синтаксическая проверка
+        run: for f in server/src/*.js; do node --check "$f"; done
+
+      - name: E2E-тесты
+        run: node server/test/e2e.js
+
+      - name: Собрать артефакт
+        run: |
+          mkdir -p publish/server
+          cp -r server/src server/package.json server/Dockerfile server/.env.example publish/server/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CoopStream-server
+          path: publish/server
+          if-no-files-found: error
+
+  release:
+    name: Релиз по тегу
+    needs: [client, server]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: CoopStream-client-win-x64
+          path: dist/client
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: CoopStream-server
+          path: dist/server
+
+      - name: Архивы
+        run: |
+          cd dist
+          zip -r CoopStream-client-win-x64.zip client
+          zip -r CoopStream-server.zip server
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/CoopStream-client-win-x64.zip
+            dist/CoopStream-server.zip

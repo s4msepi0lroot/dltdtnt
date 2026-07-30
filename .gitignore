@@ -1,0 +1,22 @@
+# .NET
+bin/
+obj/
+publish/
+out/
+*.user
+*.suo
+.vs/
+.idea/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Данные сервера (аккаунты) — никогда не коммитить
+server/data/
+.env
+
+# Прочее
+*.zip
+.DS_Store
+Thumbs.db
