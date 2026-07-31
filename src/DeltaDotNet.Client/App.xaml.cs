@@ -1,5 +1,6 @@
 using System.Windows;
 using DeltaDotNet.Core;
+using DeltaDotNet.Client.Localization;
 using DeltaDotNet.Client.Services;
 
 namespace DeltaDotNet.Client;
@@ -25,11 +26,16 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // Language must be set before the first window is created so that every
+        // {loc:Tr key} markup extension resolves in the right language.
+        Loc.SetLanguage(Settings.Language);
+
         Theme.ApplyStartupTheme();
 
         DispatcherUnhandledException += (_, args) =>
         {
-            MessageBox.Show("Unexpected error:\n\n" + args.Exception.Message,
+            MessageBox.Show(Loc.T("unexpected") + "\n\n" + args.Exception.Message,
                 "DeltaDotNet", MessageBoxButton.OK, MessageBoxImage.Error);
             args.Handled = true;
         };

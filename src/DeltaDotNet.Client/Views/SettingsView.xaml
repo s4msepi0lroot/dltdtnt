@@ -1,23 +1,28 @@
 <UserControl x:Class="DeltaDotNet.Client.Views.SettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:DeltaDotNet.Client.Localization">
     <Border Style="{StaticResource DeltaBox}">
         <DockPanel>
-            <TextBlock DockPanel.Dock="Top" Style="{StaticResource TitleText}" Text="* Settings" />
-            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal">
-                <Button Content="SAVE" Width="140" Click="Save_Click" />
-                <Button Content="Back" Width="120" Margin="8,4,0,4" Click="Back_Click" />
-                <TextBlock x:Name="MessageText" Margin="14,10,0,0" Style="{StaticResource SubtleText}" Text="" />
+            <TextBlock DockPanel.Dock="Top" Style="{StaticResource TitleText}" Text="{loc:Tr settings.title}" />
+
+            <StackPanel DockPanel.Dock="Bottom">
+                <TextBlock x:Name="MessageText" Style="{StaticResource SubtleText}"
+                           Foreground="{DynamicResource AccentBrush}" Text="" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="{loc:Tr save}" MinWidth="130" Click="Save_Click" />
+                    <Button Content="{loc:Tr back}" MinWidth="130" Margin="8,4,0,4" Click="Back_Click" />
+                </StackPanel>
             </StackPanel>
 
-            <TabControl Background="Transparent" Margin="0,8">
+            <TabControl Margin="0,4">
 
-                <!-- ============ QUALITY ============ -->
-                <TabItem Header="Quality">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel Margin="10">
-                            <TextBlock Text="Preset" />
-                            <ComboBox x:Name="PresetBox" SelectionChanged="Preset_Changed">
+                <!-- ================= QUALITY ================= -->
+                <TabItem Header="{loc:Tr settings.tab.quality}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+                        <StackPanel>
+                            <TextBlock Text="{loc:Tr settings.preset}" />
+                            <ComboBox x:Name="PresetBox" SelectionChanged="Preset_Changed" MaxWidth="320" HorizontalAlignment="Left">
                                 <ComboBoxItem Content="Potato" />
                                 <ComboBoxItem Content="Low" />
                                 <ComboBoxItem Content="Medium" />
@@ -26,113 +31,133 @@
                                 <ComboBoxItem Content="Custom" />
                             </ComboBox>
 
-                            <TextBlock x:Name="FpsLabel" Margin="0,10,0,0" Text="Frame rate" />
+                            <TextBlock x:Name="FpsLabel" Margin="0,12,0,0" Text="" />
                             <Slider x:Name="FpsSlider" Minimum="5" Maximum="60" TickFrequency="1"
                                     ValueChanged="Quality_Changed" />
 
-                            <TextBlock x:Name="ScaleLabel" Text="Resolution scale" />
+                            <TextBlock x:Name="ScaleLabel" Text="" />
                             <Slider x:Name="ScaleSlider" Minimum="25" Maximum="100" TickFrequency="5"
                                     ValueChanged="Quality_Changed" />
 
-                            <TextBlock x:Name="JpegLabel" Text="Image quality" />
+                            <TextBlock x:Name="JpegLabel" Text="" />
                             <Slider x:Name="JpegSlider" Minimum="20" Maximum="95" TickFrequency="5"
                                     ValueChanged="Quality_Changed" />
 
-                            <CheckBox x:Name="StatsBox" Content="Show stream statistics while playing" />
-                            <TextBlock Style="{StaticResource SubtleText}"
-                                       Text="Higher values look better but need more upload bandwidth on the host." />
+                            <CheckBox x:Name="StatsBox" Content="{loc:Tr settings.stats}" />
+                            <TextBlock Style="{StaticResource SubtleText}" Text="{loc:Tr settings.quality.hint}" />
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
 
-                <!-- ============ CONTROLS ============ -->
-                <TabItem Header="Controls">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel Margin="10">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Player slot" VerticalAlignment="Center" Margin="0,0,10,0" />
-                                <ComboBox x:Name="SlotBox" Width="160" SelectedIndex="0" SelectionChanged="Slot_Changed">
-                                    <ComboBoxItem Content="Player 1" />
-                                    <ComboBoxItem Content="Player 2" />
-                                    <ComboBoxItem Content="Player 3" />
-                                    <ComboBoxItem Content="Player 4" />
-                                </ComboBox>
-                                <ComboBox x:Name="LayerBox" Width="320" Margin="12,4,0,4" SelectedIndex="0"
-                                          SelectionChanged="Slot_Changed">
-                                    <ComboBoxItem Content="My keyboard (what I press)" />
-                                    <ComboBoxItem Content="Game keys (what the host injects)" />
-                                </ComboBox>
-                                <Button Content="Defaults" Width="120" Margin="12,4,0,4" Click="Defaults_Click" />
-                            </StackPanel>
+                <!-- ================= CONTROLS ================= -->
+                <TabItem Header="{loc:Tr settings.tab.controls}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+                        <StackPanel>
+                            <WrapPanel>
+                                <StackPanel Margin="0,0,16,0">
+                                    <TextBlock Text="{loc:Tr settings.slot}" />
+                                    <ComboBox x:Name="SlotBox" Width="200" SelectedIndex="0" SelectionChanged="Slot_Changed">
+                                        <ComboBoxItem Content="1" />
+                                        <ComboBoxItem Content="2" />
+                                        <ComboBoxItem Content="3" />
+                                        <ComboBoxItem Content="4" />
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="{loc:Tr settings.player}" />
+                                    <ComboBox x:Name="LayerBox" Width="280" SelectedIndex="0" SelectionChanged="Slot_Changed">
+                                        <ComboBoxItem Content="{loc:Tr settings.layer.mine}" />
+                                        <ComboBoxItem Content="{loc:Tr settings.layer.game}" />
+                                    </ComboBox>
+                                </StackPanel>
+                            </WrapPanel>
 
-                            <TextBlock Style="{StaticResource SubtleText}" Margin="0,6,0,6"
-                                       Text="Click a button, then press the key you want. Esc clears the binding." />
-
-                            <ItemsControl x:Name="BindingItems">
+                            <TextBlock Style="{StaticResource SubtleText}" Margin="0,8,0,0" Text="{loc:Tr settings.bind.hint}" />
+                            <ItemsControl x:Name="BindingItems" Margin="0,10,0,0">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <WrapPanel />
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                             </ItemsControl>
+
+                            <Button Content="{loc:Tr settings.defaults}" MinWidth="220" HorizontalAlignment="Left"
+                                    Click="Defaults_Click" />
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
 
-                <!-- ============ CAPTURE ============ -->
-                <TabItem Header="Capture">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel Margin="10">
-                            <TextBlock Text="What the host streams" />
-                            <ComboBox x:Name="CaptureModeBox" SelectedIndex="0">
-                                <ComboBoxItem Content="Game window (recommended)" />
-                                <ComboBoxItem Content="Whole screen" />
+                <!-- ================= CAPTURE ================= -->
+                <TabItem Header="{loc:Tr settings.tab.capture}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+                        <StackPanel>
+                            <TextBlock Text="{loc:Tr settings.capture.what}" />
+                            <ComboBox x:Name="CaptureModeBox" SelectedIndex="0" MaxWidth="320" HorizontalAlignment="Left">
+                                <ComboBoxItem Content="{loc:Tr settings.capture.window}" />
+                                <ComboBoxItem Content="{loc:Tr settings.capture.screen}" />
                             </ComboBox>
 
-                            <TextBlock Text="Window title contains" Margin="0,10,0,0" />
-                            <TextBox x:Name="WindowTitleBox" />
+                            <TextBlock Margin="0,14,0,0" Text="{loc:Tr settings.capture.target}" />
+                            <TextBlock x:Name="TargetText" Foreground="{DynamicResource AccentBrush}" Text="" />
+
                             <StackPanel Orientation="Horizontal">
-                                <ComboBox x:Name="WindowListBox" Width="380" />
-                                <Button Content="Refresh list" Width="140" Margin="8,4,0,4" Click="RefreshWindows_Click" />
-                                <Button Content="Use selected" Width="150" Margin="8,4,0,4" Click="UseWindow_Click" />
+                                <Button Content="{loc:Tr settings.capture.pick}" MinWidth="230" Click="PickProcess_Click" />
+                                <Button Content="{loc:Tr settings.capture.clear}" MinWidth="130" Margin="8,4,0,4"
+                                        Click="ClearProcess_Click" />
                             </StackPanel>
+
+                            <TextBlock Style="{StaticResource SubtleText}" Margin="0,10,0,0"
+                                       Text="{loc:Tr settings.capture.hint}" />
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
 
-                <!-- ============ THEMES ============ -->
-                <TabItem Header="Themes">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel Margin="10">
-                            <TextBlock Text="Installed themes (.ddntheme)" />
-                            <ListBox x:Name="ThemeList" Height="170" DisplayMemberPath="Label" />
-                            <StackPanel Orientation="Horizontal">
-                                <Button Content="Apply" Width="120" Click="ApplyTheme_Click" />
-                                <Button Content="Import file..." Width="160" Margin="8,4,0,4" Click="ImportTheme_Click" />
-                                <Button Content="Open themes folder" Width="200" Margin="8,4,0,4" Click="OpenThemesFolder_Click" />
-                                <Button Content="Built-in theme" Width="170" Margin="8,4,0,4" Click="DefaultTheme_Click" />
-                            </StackPanel>
+                <!-- ================= THEMES ================= -->
+                <TabItem Header="{loc:Tr settings.tab.themes}">
+                    <Grid Margin="12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
 
-                            <CheckBox x:Name="MusicBox" Content="Play theme background music" Margin="0,10,0,0" />
-                            <TextBlock x:Name="VolumeLabel" Text="Music volume" />
+                        <TextBlock Grid.Row="0" Text="{loc:Tr settings.themes.installed}" />
+                        <ListBox Grid.Row="1" x:Name="ThemeList" DisplayMemberPath="Label" MinHeight="120" Margin="0,4" />
+
+                        <StackPanel Grid.Row="2">
+                            <WrapPanel>
+                                <Button Content="{loc:Tr settings.themes.apply}" MinWidth="150" Click="ApplyTheme_Click" />
+                                <Button Content="{loc:Tr settings.themes.import}" MinWidth="200" Margin="8,4,0,4" Click="ImportTheme_Click" />
+                                <Button Content="{loc:Tr settings.themes.folder}" MinWidth="180" Margin="8,4,0,4" Click="OpenThemesFolder_Click" />
+                                <Button Content="{loc:Tr settings.themes.builtin}" MinWidth="180" Margin="8,4,0,4" Click="DefaultTheme_Click" />
+                            </WrapPanel>
+                            <CheckBox x:Name="MusicBox" Content="{loc:Tr settings.themes.music}" />
+                            <TextBlock x:Name="VolumeLabel" Text="" />
                             <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" TickFrequency="1"
                                     ValueChanged="Volume_Changed" />
                         </StackPanel>
-                    </ScrollViewer>
+                    </Grid>
                 </TabItem>
 
-                <!-- ============ ACCOUNT ============ -->
-                <TabItem Header="Account">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel Margin="10">
-                            <TextBlock Text="Server URL" />
-                            <TextBox x:Name="ServerBox" />
-                            <CheckBox x:Name="RememberBox" Content="Stay signed in on this PC" />
-                            <TextBlock x:Name="AccountText" Style="{StaticResource SubtleText}" Margin="0,10,0,0" />
+                <!-- ================= GENERAL / ACCOUNT ================= -->
+                <TabItem Header="{loc:Tr settings.tab.general}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+                        <StackPanel>
+                            <TextBlock Text="{loc:Tr settings.language}" />
+                            <ComboBox x:Name="LanguageBox" SelectedIndex="0" MaxWidth="320" HorizontalAlignment="Left">
+                                <ComboBoxItem Content="{loc:Tr settings.language.en}" />
+                                <ComboBoxItem Content="{loc:Tr settings.language.ru}" />
+                            </ComboBox>
+                            <TextBlock Style="{StaticResource SubtleText}" Text="{loc:Tr settings.language.hint}" />
+
+                            <TextBlock Margin="0,16,0,0" Text="{loc:Tr login.server}" />
+                            <TextBox x:Name="ServerBox" MaxWidth="420" HorizontalAlignment="Left" />
+                            <CheckBox x:Name="RememberBox" Content="{loc:Tr login.remember}" />
+
+                            <TextBlock x:Name="AccountText" Style="{StaticResource SubtleText}" Margin="0,12,0,0" Text="" />
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
-
             </TabControl>
         </DockPanel>
     </Border>

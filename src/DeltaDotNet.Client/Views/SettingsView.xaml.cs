@@ -1,15 +1,17 @@
+using System;
 using System.Linq;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using DeltaDotNet.Client.Localization;
 using DeltaDotNet.Client.Services;
 using DeltaDotNet.Core;
 
 namespace DeltaDotNet.Client.Views;
 
-/// <summary>Quality, per-player key bindings, capture source, themes and account settings.</summary>
+/// <summary>Quality, per-player key bindings, capture target, themes, language and account settings.</summary>
 public partial class SettingsView : UserControl
 {
     private class ThemeEntry
@@ -38,24 +40,25 @@ public partial class SettingsView : UserControl
 
         // capture
         CaptureModeBox.SelectedIndex = s.CaptureMode == "screen" ? 1 : 0;
-        WindowTitleBox.Text = s.CaptureWindowTitle;
+        UpdateTargetText();
 
         // themes
         MusicBox.IsChecked = s.MusicEnabled;
         VolumeSlider.Value = s.MusicVolume * 100;
         ReloadThemes();
 
-        // account
+        // general / account
+        LanguageBox.SelectedIndex = s.Language == "ru" ? 1 : 0;
         ServerBox.Text = s.ServerUrl;
         RememberBox.IsChecked = s.RememberMe;
         AccountText.Text = App.User == null
-            ? "Not signed in."
-            : $"Signed in as {App.User.Username} (role: {App.User.Role}). Settings file: {AppSettings.SettingsPath}";
+            ? Loc.T("settings.account.notsigned")
+            : Loc.F("settings.account.info", App.User.Username, App.User.Role, AppSettings.SettingsPath);
 
         _loading = false;
         UpdateQualityLabels();
+        UpdateVolumeLabel();
         BuildBindingButtons();
-        RefreshWindows_Click(null, null);
     }
 
     // ---------------- quality ----------------
@@ -83,9 +86,9 @@ public partial class SettingsView : UserControl
     private void UpdateQualityLabels()
     {
         if (FpsLabel == null) return;
-        FpsLabel.Text = $"Frame rate: {(int)FpsSlider.Value} fps";
-        ScaleLabel.Text = $"Resolution scale: {(int)ScaleSlider.Value}%";
-        JpegLabel.Text = $"Image quality: {(int)JpegSlider.Value}";
+        FpsLabel.Text = Loc.F("settings.fps", (int)FpsSlider.Value);
+        ScaleLabel.Text = Loc.F("settings.scale", (int)ScaleSlider.Value);
+        JpegLabel.Text = Loc.F("settings.jpeg", (int)JpegSlider.Value);
     }
 
     // ---------------- key bindings ----------------
@@ -134,7 +137,7 @@ public partial class SettingsView : UserControl
         var button = (Button)sender;
         _waitingForKey = button;
         _waitingAction = (string)button.Tag;
-        button.Content = "press a key...";
+        button.Content = Loc.T("settings.bind.press");
         Focus();
         Keyboard.Focus(this);
         PreviewKeyDown -= CaptureBindingKey;
@@ -152,7 +155,7 @@ public partial class SettingsView : UserControl
         _waitingForKey = null;
         _waitingAction = null;
         PreviewKeyDown -= CaptureBindingKey;
-        MessageText.Text = "* Binding updated (remember to press SAVE)";
+        MessageText.Text = Loc.T("settings.bind.updated");
     }
 
     private void Defaults_Click(object sender, RoutedEventArgs e)
@@ -164,16 +167,37 @@ public partial class SettingsView : UserControl
         BuildBindingButtons();
     }
 
-    // ---------------- capture ----------------
-    private void RefreshWindows_Click(object sender, RoutedEventArgs e)
+    // ---------------- capture target ----------------
+    private void UpdateTargetText()
     {
-        try { WindowListBox.ItemsSource = ScreenCapture.ListWindowTitles(); }
-        catch { }
+        var label = App.Settings.CaptureLabel;
+        TargetText.Text = string.IsNullOrWhiteSpace(label) ? Loc.T("settings.capture.nothing") : label;
     }
 
-    private void UseWindow_Click(object sender, RoutedEventArgs e)
+    /// <summary>Opens the Cheat Engine style process list.</summary>
+    private void PickProcess_Click(object sender, RoutedEventArgs e)
     {
-        if (WindowListBox.SelectedItem is string title) WindowTitleBox.Text = title;
+        var picker = new ProcessPickerWindow { Owner = Window.GetWindow(this) };
+        if (picker.ShowDialog() != true || picker.Selected == null) return;
+
+        var target = picker.Selected;
+        var s = App.Settings;
+        s.CaptureProcessId = target.ProcessId;
+        s.CaptureProcessName = target.ProcessName;
+        s.CaptureHandle = target.Handle.ToInt64();
+        s.CaptureWindowTitle = target.Title;
+        s.CaptureLabel = target.Display;
+        UpdateTargetText();
+    }
+
+    private void ClearProcess_Click(object sender, RoutedEventArgs e)
+    {
+        var s = App.Settings;
+        s.CaptureProcessId = 0;
+        s.CaptureProcessName = "";
+        s.CaptureHandle = 0;
+        s.CaptureLabel = "";
+        UpdateTargetText();
     }
 
     // ---------------- themes ----------------
@@ -186,7 +210,7 @@ public partial class SettingsView : UserControl
             {
                 Path = path,
                 Label = manifest == null
-                    ? Path.GetFileName(path) + "  (invalid)"
+                    ? System.IO.Path.GetFileName(path) + "  " + Loc.T("settings.themes.invalid")
                     : $"{manifest.Name}  v{manifest.Version}  by {manifest.Author}"
             };
         }).ToList();
@@ -195,9 +219,14 @@ public partial class SettingsView : UserControl
 
     private void ApplyTheme_Click(object sender, RoutedEventArgs e)
     {
-        if (ThemeList.SelectedItem is not ThemeEntry entry) { MessageText.Text = "* Select a theme"; return; }
-        if (App.Theme.TryApplyFile(entry.Path, out var error)) MessageText.Text = "* Theme applied";
-        else MessageText.Text = "* " + error;
+        if (ThemeList.SelectedItem is not ThemeEntry entry)
+        {
+            MessageText.Text = Loc.T("settings.themes.select");
+            return;
+        }
+        MessageText.Text = App.Theme.TryApplyFile(entry.Path, out var error)
+            ? Loc.T("settings.themes.applied")
+            : "* " + error;
     }
 
     private void ImportTheme_Click(object sender, RoutedEventArgs e)
@@ -211,8 +240,9 @@ public partial class SettingsView : UserControl
         {
             var imported = App.Theme.ImportTheme(dialog.FileName);
             ReloadThemes();
-            if (App.Theme.TryApplyFile(imported, out var error)) MessageText.Text = "* Theme imported and applied";
-            else MessageText.Text = "* " + error;
+            MessageText.Text = App.Theme.TryApplyFile(imported, out var error)
+                ? Loc.T("settings.themes.imported")
+                : "* " + error;
         }
         catch (Exception ex) { MessageText.Text = "* " + ex.Message; }
     }
@@ -226,14 +256,20 @@ public partial class SettingsView : UserControl
     private void DefaultTheme_Click(object sender, RoutedEventArgs e)
     {
         App.Theme.ApplyDefault();
-        MessageText.Text = "* Built-in theme restored";
+        MessageText.Text = Loc.T("settings.themes.restored");
     }
 
     private void Volume_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (_loading) return;
-        VolumeLabel.Text = $"Music volume: {(int)VolumeSlider.Value}%";
+        UpdateVolumeLabel();
         App.Theme.SetVolume(VolumeSlider.Value / 100.0);
+    }
+
+    private void UpdateVolumeLabel()
+    {
+        if (VolumeLabel == null) return;
+        VolumeLabel.Text = Loc.F("settings.themes.volume", (int)VolumeSlider.Value);
     }
 
     // ---------------- save ----------------
@@ -249,17 +285,31 @@ public partial class SettingsView : UserControl
         };
         s.ShowStats = StatsBox.IsChecked == true;
         s.CaptureMode = CaptureModeBox.SelectedIndex == 1 ? "screen" : "window";
-        s.CaptureWindowTitle = WindowTitleBox.Text.Trim();
         s.MusicEnabled = MusicBox.IsChecked == true;
         s.MusicVolume = VolumeSlider.Value / 100.0;
         s.ServerUrl = ServerBox.Text.Trim().TrimEnd('/');
         s.RememberMe = RememberBox.IsChecked == true;
         if (!s.RememberMe) s.Token = "";
+
+        var language = LanguageBox.SelectedIndex == 1 ? "ru" : "en";
+        bool languageChanged = language != s.Language;
+        s.Language = language;
         s.Save();
 
         App.Theme.RefreshMusicState();
-        MessageText.Text = "* Saved";
-        MainWindow.Instance.SetStatus("Settings saved.");
+
+        if (languageChanged)
+        {
+            // Re-create the whole view tree so every {loc:Tr} is re-evaluated.
+            Loc.SetLanguage(language);
+            MainWindow.Instance.RefreshHeader();
+            MainWindow.Instance.Navigate(new SettingsView());
+            MainWindow.Instance.SetStatus(Loc.T("settings.saved.status"));
+            return;
+        }
+
+        MessageText.Text = Loc.T("settings.saved");
+        MainWindow.Instance.SetStatus(Loc.T("settings.saved.status"));
     }
 
     private void Back_Click(object sender, RoutedEventArgs e)

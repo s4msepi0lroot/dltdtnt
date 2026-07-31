@@ -1,6 +1,9 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using DeltaDotNet.Client.Localization;
 using DeltaDotNet.Core;
 
 namespace DeltaDotNet.Client.Views;
@@ -51,8 +54,8 @@ public partial class AdminView : UserControl
             var s = res.Stats;
             StatsText.Text = $"online: {s.Online} · lobbies: {s.Lobbies} (playing: {s.Playing}) · " +
                              $"accounts: {s.Users} · uptime: {TimeSpan.FromSeconds(s.UptimeSec):hh\\:mm\\:ss}";
-            OnlineText.Text = "Online now: " + (res.Online.Count == 0
-                ? "nobody"
+            OnlineText.Text = Loc.T("admin.online") + " " + (res.Online.Count == 0
+                ? Loc.T("none")
                 : string.Join(", ", res.Online.Select(u => u.Username)));
         }
         catch (Exception ex) { MessageText.Text = "* " + ex.Message; }
@@ -101,7 +104,10 @@ public partial class AdminView : UserControl
     {
         var user = Selected;
         if (user == null) { MessageText.Text = "* Select a user"; return; }
-        var dialog = new PromptDialog("Rename", "New username:", user.Username);
+        var dialog = new PromptDialog(Loc.T("admin.rename"), Loc.T("admin.newname"), user.Username)
+        {
+            Owner = Window.GetWindow(this)
+        };
         if (dialog.ShowDialog() != true) return;
         try
         {
@@ -115,7 +121,10 @@ public partial class AdminView : UserControl
     {
         var user = Selected;
         if (user == null) { MessageText.Text = "* Select a user"; return; }
-        var dialog = new PromptDialog("Ban account", $"Reason for banning {user.Username}:");
+        var dialog = new PromptDialog(Loc.T("admin.ban"), Loc.F("admin.banreason", user.Username))
+        {
+            Owner = Window.GetWindow(this)
+        };
         if (dialog.ShowDialog() != true) return;
         try
         {
@@ -142,7 +151,7 @@ public partial class AdminView : UserControl
     {
         var user = Selected;
         if (user == null) return;
-        if (MessageBox.Show($"Delete the account {user.Username}?", "Admin",
+        if (MessageBox.Show(Loc.F("admin.confirmdelete", user.Username), "DeltaDotNet",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         try
         {
@@ -157,7 +166,7 @@ public partial class AdminView : UserControl
 
     private async void CloseLobby_Click(object sender, RoutedEventArgs e)
     {
-        if (LobbyList.SelectedItem is not LobbyInfo lobby) { MessageText.Text = "* Select a lobby"; return; }
+        if (LobbyList.SelectedItem is not LobbyInfo lobby) { MessageText.Text = Loc.T("browser.select"); return; }
         try
         {
             await App.Api.AdminDeleteLobbyAsync(lobby.Id);

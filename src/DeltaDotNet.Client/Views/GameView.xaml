@@ -1,32 +1,34 @@
 <UserControl x:Class="DeltaDotNet.Client.Views.GameView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:DeltaDotNet.Client.Localization"
              Focusable="True" IsTabStop="True">
     <Border Style="{StaticResource DeltaBox}">
         <DockPanel>
             <TextBlock DockPanel.Dock="Top" x:Name="HeaderText" Style="{StaticResource TitleText}"
-                       FontSize="20" Text="* Game" />
+                       FontSize="20" Text="" />
 
             <StackPanel DockPanel.Dock="Bottom">
-                <StackPanel Orientation="Horizontal">
+                <WrapPanel>
                     <Button x:Name="StopButton" Style="{StaticResource DangerButton}"
-                            Content="STOP GAME" Width="150" Click="Stop_Click" />
-                    <Button Content="Back to lobby" Width="160" Margin="8,4,0,4" Click="Back_Click" />
-                    <Button x:Name="FocusButton" Content="Focus game window" Width="200" Margin="8,4,0,4"
+                            Content="{loc:Tr game.stop}" MinWidth="150" Click="Stop_Click" />
+                    <Button Content="{loc:Tr game.backtolobby}" MinWidth="170" Margin="8,4,0,4" Click="Back_Click" />
+                    <Button x:Name="FocusButton" Content="{loc:Tr game.focus}" MinWidth="210" Margin="8,4,0,4"
                             Click="FocusGame_Click" />
-                    <CheckBox x:Name="CaptureInputBox" Content="Capture my keyboard" IsChecked="True"
+                    <CheckBox x:Name="CaptureInputBox" Content="{loc:Tr game.capture}" IsChecked="True"
                               Margin="14,10,0,0" />
-                </StackPanel>
+                </WrapPanel>
                 <TextBlock x:Name="StatsText" Style="{StaticResource SubtleText}" Text="" />
             </StackPanel>
 
             <Border Margin="0,8" Background="#FF000000" BorderThickness="2"
                     BorderBrush="{DynamicResource BorderBrush2}">
                 <Grid>
-                    <Image x:Name="VideoImage" Stretch="Uniform" />
+                    <Image x:Name="VideoImage" Stretch="Uniform"
+                           RenderOptions.BitmapScalingMode="NearestNeighbor" />
                     <TextBlock x:Name="WaitingText" Style="{StaticResource SubtleText}"
                                HorizontalAlignment="Center" VerticalAlignment="Center"
-                               Text="* Waiting for the host's stream..." />
+                               Text="{loc:Tr game.waiting}" />
                 </Grid>
             </Border>
         </DockPanel>

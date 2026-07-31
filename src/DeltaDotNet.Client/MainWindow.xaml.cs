@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using DeltaDotNet.Client.Localization;
 using DeltaDotNet.Client.Views;
 
 namespace DeltaDotNet.Client;
@@ -20,8 +21,10 @@ public partial class MainWindow : Window
         ApplyThemeVisuals();
 
         App.Relay.Announce += text => Dispatcher.Invoke(() =>
-            MessageBox.Show(text, "Announcement from the server", MessageBoxButton.OK, MessageBoxImage.Information));
+            MessageBox.Show(text, Loc.T("announcement"), MessageBoxButton.OK, MessageBoxImage.Information));
         App.Relay.ErrorReceived += text => Dispatcher.Invoke(() => SetStatus("Server: " + text));
+
+        SetStatus(Loc.T("ready"));
 
         Navigate(new LoginView());
     }
@@ -49,7 +52,9 @@ public partial class MainWindow : Window
             UserNameText.Foreground = new SolidColorBrush(Services.ThemeManager.ParseColor(user.NameColor));
         else UserNameText.SetResourceReference(ForegroundProperty, "TextBrush");
 
-        HeaderStatus.Text = App.Relay.IsConnected ? "connected: " + App.Settings.ServerUrl : "offline";
+        HeaderStatus.Text = App.Relay.IsConnected
+            ? Loc.F("header.connected", App.Settings.ServerUrl)
+            : Loc.T("header.offline");
     }
 
     // ---------------- theme ----------------
@@ -103,6 +108,6 @@ public partial class MainWindow : Window
         App.Api.Token = null;
         App.Relay.Dispose();
         Navigate(new LoginView());
-        SetStatus("Signed out.");
+        SetStatus(Loc.T("header.signedout"));
     }
 }

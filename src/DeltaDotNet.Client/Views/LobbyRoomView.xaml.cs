@@ -1,7 +1,11 @@
+using System;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using DeltaDotNet.Client.Localization;
 using DeltaDotNet.Core;
 
 namespace DeltaDotNet.Client.Views;
@@ -49,31 +53,45 @@ public partial class LobbyRoomView : UserControl
     // ---------------- rendering ----------------
     private void Render()
     {
-        TitleTextBlock.Text = $"* {_lobby.Name}";
+        TitleText.Text = Loc.F("room.title", _lobby.Name);
 
         var access = _lobby.AccessMode switch
         {
-            "password" => "closed · password",
-            "whitelist" => "closed · allow list",
-            _ => "open"
+            "password" => Loc.T("room.access.password"),
+            "whitelist" => Loc.T("room.access.whitelist"),
+            _ => Loc.T("room.access.open")
         };
-        InfoText.Text = $"code #{_lobby.Id} · {_lobby.Players}/{_lobby.MaxPlayers} players · {access} · " +
-                        $"host: {_lobby.HostName} · quality {_lobby.Quality.Fps}fps/{_lobby.Quality.Scale}%/q{_lobby.Quality.JpegQuality} · " +
-                        $"you are P{_slot + 1}";
+        InfoText.Text = Loc.F("room.info",
+            _lobby.Id, _lobby.Players, _lobby.MaxPlayers, access, _lobby.HostName,
+            _lobby.Quality.Fps, _lobby.Quality.Scale, _lobby.Quality.JpegQuality, _slot + 1);
 
         MemberList.ItemsSource = null;
         MemberList.ItemsSource = _lobby.Members;
 
-        StartButton.Visibility = _isHost ? Visibility.Visible : Visibility.Collapsed;
-        CloseLobbyButton.Visibility = _isHost ? Visibility.Visible : Visibility.Collapsed;
-        HostTools.Visibility = _isHost ? Visibility.Visible : Visibility.Collapsed;
+        var hostOnly = _isHost ? Visibility.Visible : Visibility.Collapsed;
+        StartButton.Visibility = hostOnly;
+        CloseButton.Visibility = hostOnly;
+        KickButton.Visibility = hostOnly;
+        BanButton.Visibility = hostOnly;
+        UnbanButton.Visibility = hostOnly;
         ReadyButton.Visibility = _isHost ? Visibility.Collapsed : Visibility.Visible;
-        ReadyButton.Content = _ready ? "READY ✓" : "READY";
+        ReadyButton.Content = _ready ? Loc.T("room.ready.on") : Loc.T("room.ready");
 
-        MainWindow.Instance.SetStatus($"Lobby #{_lobby.Id} — share this code with your friends.");
+        MainWindow.Instance.SetStatus(Loc.F("room.share", _lobby.Id));
     }
 
     private LobbyMember SelectedMember => MemberList.SelectedItem as LobbyMember;
+
+    /// <summary>Appends one line to the chat panel and scrolls to the bottom.</summary>
+    private void AddChatLine(string text, bool system)
+    {
+        var block = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 2) };
+        if (system) block.SetResourceReference(ForegroundProperty, "AccentBrush");
+        ChatPanel.Children.Add(block);
+        ChatScroll.ScrollToEnd();
+    }
+
+    private void Warn(string key) => AddChatLine(Loc.T(key), true);
 
     // ---------------- relay events ----------------
     private void OnLobbyUpdated(LobbyInfo lobby) => Dispatcher.Invoke(() =>
@@ -96,41 +114,37 @@ public partial class LobbyRoomView : UserControl
         MainWindow.Instance.Navigate(new GameView(_lobby, _slot, _isHost, quality ?? _lobby.Quality));
     });
 
-    private void OnChat(string from, string text, bool rainbow) => Dispatcher.Invoke(() =>
-    {
-        ChatList.Items.Add($"{from}: {text}");
-        if (ChatList.Items.Count > 0) ChatList.ScrollIntoView(ChatList.Items[^1]);
-    });
+    private void OnChat(string from, string text, bool rainbow) =>
+        Dispatcher.Invoke(() => AddChatLine($"{from}: {text}", false));
 
     private void OnAnnounce(string message) => Dispatcher.Invoke(() =>
     {
-        ChatList.Items.Add($"* {message}");
+        AddChatLine("* " + message, true);
         MainWindow.Instance.SetStatus(message);
     });
 
     private void OnKicked(bool banned, string reason) => Dispatcher.Invoke(() =>
     {
         MainWindow.Instance.SetStatus(banned
-            ? $"You were banned from the lobby. {reason}"
-            : $"You were kicked from the lobby. {reason}");
+            ? Loc.F("room.wasbanned", reason)
+            : Loc.F("room.waskicked", reason));
         MainWindow.Instance.Navigate(new LobbyBrowserView());
     });
 
     private void OnLobbyClosed(string message) => Dispatcher.Invoke(() =>
     {
-        MainWindow.Instance.SetStatus(string.IsNullOrEmpty(message) ? "The lobby was closed." : message);
+        MainWindow.Instance.SetStatus(string.IsNullOrEmpty(message) ? Loc.T("room.wasclosed") : message);
         MainWindow.Instance.Navigate(new LobbyBrowserView());
     });
 
-    private void OnError(string message) => Dispatcher.Invoke(() => MessageText.Text = "* " + message);
+    private void OnError(string message) => Dispatcher.Invoke(() => AddChatLine("* " + message, true));
 
     // ---------------- buttons ----------------
     private async void Start_Click(object sender, RoutedEventArgs e)
     {
-        MessageText.Text = "";
         if (_lobby.Members.Count < 2)
         {
-            MessageText.Text = "* Wait for at least one more player.";
+            Warn("room.needmore");
             return;
         }
         await App.Relay.StartAsync();
@@ -139,7 +153,7 @@ public partial class LobbyRoomView : UserControl
     private async void Ready_Click(object sender, RoutedEventArgs e)
     {
         _ready = !_ready;
-        ReadyButton.Content = _ready ? "READY ✓" : "READY";
+        ReadyButton.Content = _ready ? Loc.T("room.ready.on") : Loc.T("room.ready");
         await App.Relay.ReadyAsync(_ready);
     }
 
@@ -149,9 +163,9 @@ public partial class LobbyRoomView : UserControl
         MainWindow.Instance.Navigate(new LobbyBrowserView());
     }
 
-    private async void CloseLobby_Click(object sender, RoutedEventArgs e)
+    private async void Close_Click(object sender, RoutedEventArgs e)
     {
-        if (MessageBox.Show("Delete this lobby for everyone?", "DeltaDotNet",
+        if (MessageBox.Show(Loc.T("room.close.confirm"), "DeltaDotNet",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         await App.Relay.CloseLobbyAsync();
         MainWindow.Instance.Navigate(new LobbyBrowserView());
@@ -160,46 +174,52 @@ public partial class LobbyRoomView : UserControl
     private async void Kick_Click(object sender, RoutedEventArgs e)
     {
         var member = SelectedMember;
-        if (member == null) { MessageText.Text = "* Select a player first."; return; }
-        if (member.Id == App.User?.Id) { MessageText.Text = "* You cannot kick yourself."; return; }
+        if (member == null) { Warn("room.selectplayer"); return; }
+        if (member.Id == App.User?.Id) { Warn("room.notyourself"); return; }
         await App.Relay.KickAsync(member.Id);
     }
 
     private async void Ban_Click(object sender, RoutedEventArgs e)
     {
         var member = SelectedMember;
-        if (member == null) { MessageText.Text = "* Select a player first."; return; }
-        if (member.Id == App.User?.Id) { MessageText.Text = "* You cannot ban yourself."; return; }
-        var dialog = new PromptDialog("Ban player", $"Reason for banning {member.Username}:", "no reason");
+        if (member == null) { Warn("room.selectplayer"); return; }
+        if (member.Id == App.User?.Id) { Warn("room.notyourself"); return; }
+        var dialog = new PromptDialog(Loc.T("room.ban"), Loc.F("room.banreason", member.Username), "-")
+        {
+            Owner = Window.GetWindow(this)
+        };
         if (dialog.ShowDialog() != true) return;
         await App.Relay.BanAsync(member.Id, dialog.Value);
     }
 
     private async void Unban_Click(object sender, RoutedEventArgs e)
     {
-        if (_lobby.Bans.Count == 0) { MessageText.Text = "* Nobody is banned here."; return; }
+        if (_lobby.Bans.Count == 0) { Warn("room.nobans"); return; }
         var list = string.Join(", ", _lobby.Bans.Select(b => b.Username));
-        var dialog = new PromptDialog("Unban player", $"Banned: {list}\nType the username to unban:");
+        var dialog = new PromptDialog(Loc.T("room.unban"), Loc.F("room.banned.list", list))
+        {
+            Owner = Window.GetWindow(this)
+        };
         if (dialog.ShowDialog() != true) return;
         var ban = _lobby.Bans.FirstOrDefault(b =>
             string.Equals(b.Username, dialog.Value.Trim(), StringComparison.OrdinalIgnoreCase));
-        if (ban == null) { MessageText.Text = "* No such banned player."; return; }
+        if (ban == null) { Warn("room.nosuchban"); return; }
         await App.Relay.UnbanAsync(ban.Id);
     }
 
     // ---------------- chat ----------------
-    private async void SendChat_Click(object sender, RoutedEventArgs e) => await SendChatAsync();
+    private async void Send_Click(object sender, RoutedEventArgs e) => await SendChatAsync();
 
-    private async void ChatBox_KeyDown(object sender, KeyEventArgs e)
+    private async void ChatInput_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter) { e.Handled = true; await SendChatAsync(); }
     }
 
     private async Task SendChatAsync()
     {
-        var text = ChatBox.Text.Trim();
+        var text = ChatInput.Text.Trim();
         if (text.Length == 0) return;
-        ChatBox.Text = "";
+        ChatInput.Text = "";
         await App.Relay.ChatAsync(text);
     }
 }

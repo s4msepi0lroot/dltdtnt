@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using DeltaDotNet.Client.Localization;
 using DeltaDotNet.Client.Services;
 using DeltaDotNet.Core;
 
@@ -41,7 +42,7 @@ public partial class GameView : UserControl
         _isHost = isHost;
         _quality = quality ?? lobby.Quality ?? App.Settings.Quality;
 
-        HeaderText.Text = $"* {lobby.Name}   — you are P{slot + 1}" + (isHost ? " (host, streaming)" : " (guest)");
+        HeaderText.Text = Loc.F(isHost ? "game.host" : "game.guest", lobby.Name, slot + 1);
         StopButton.Visibility = isHost ? Visibility.Visible : Visibility.Collapsed;
         FocusButton.Visibility = isHost ? Visibility.Visible : Visibility.Collapsed;
 
@@ -82,8 +83,7 @@ public partial class GameView : UserControl
 
             if (jpeg == null)
             {
-                StatsText.Text = $"* Game window \"{App.Settings.CaptureWindowTitle}\" not found — " +
-                                  "check Settings > Capture.";
+                StatsText.Text = Loc.T("game.notarget");
                 return;
             }
 
@@ -127,6 +127,7 @@ public partial class GameView : UserControl
         StatsText.Text = _isHost
             ? $"{prefix} · {fpsOut:0.0} fps out · target {_quality.Fps} fps · scale {_quality.Scale}% · q{_quality.JpegQuality}"
             : $"{prefix} · {fpsIn:0.0} fps in · {kbps:0} KB/s";
+        // (numbers stay language independent on purpose)
         _framesSent = _framesReceived = 0;
         _bytesReceived = 0;
         _lastStats = DateTime.UtcNow;

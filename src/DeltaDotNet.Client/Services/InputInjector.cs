@@ -118,7 +118,7 @@ public static class InputInjector
     /// <summary>Brings the captured game window to the foreground so injected keys reach it.</summary>
     public static void FocusGameWindow(AppSettings settings)
     {
-        var hWnd = ScreenCapture.FindWindowByTitle(settings.CaptureWindowTitle);
+        var hWnd = ScreenCapture.ResolveTarget(settings);
         if (hWnd != IntPtr.Zero) SetForegroundWindow(hWnd);
     }
 

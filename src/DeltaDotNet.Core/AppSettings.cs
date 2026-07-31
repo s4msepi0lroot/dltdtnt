@@ -46,6 +46,17 @@ public class AppSettings
     [JsonPropertyName("captureMode")] public string CaptureMode { get; set; } = "window";
     /// <summary>Part of the window title of the game to capture, e.g. "DELTARUNE".</summary>
     [JsonPropertyName("captureWindowTitle")] public string CaptureWindowTitle { get; set; } = "DELTARUNE";
+    /// <summary>Process id of the target picked in the Cheat-Engine-style process list.</summary>
+    [JsonPropertyName("captureProcessId")] public int CaptureProcessId { get; set; }
+    /// <summary>Process name of that target (used to find it again after a restart).</summary>
+    [JsonPropertyName("captureProcessName")] public string CaptureProcessName { get; set; } = "";
+    /// <summary>Window handle of that target (valid until the game is restarted).</summary>
+    [JsonPropertyName("captureHandle")] public long CaptureHandle { get; set; }
+    /// <summary>Human readable description of the picked target, shown in Settings.</summary>
+    [JsonPropertyName("captureLabel")] public string CaptureLabel { get; set; } = "";
+
+    /// <summary>Interface language: "en" (default) or "ru".</summary>
+    [JsonPropertyName("language")] public string Language { get; set; } = "en";
     /// <summary>Show the stream stats overlay while playing.</summary>
     [JsonPropertyName("showStats")] public bool ShowStats { get; set; } = true;
 
