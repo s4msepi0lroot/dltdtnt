@@ -2,21 +2,19 @@
 bin/
 obj/
 publish/
-out/
 *.user
 *.suo
 .vs/
-.idea/
 
 # Node
 node_modules/
+server/data/
 npm-debug.log*
 
-# Данные сервера (аккаунты) — никогда не коммитить
-server/data/
-.env
-
-# Прочее
+# Build output
 *.zip
-.DS_Store
+*.ddntheme
+
+# OS
 Thumbs.db
+.DS_Store

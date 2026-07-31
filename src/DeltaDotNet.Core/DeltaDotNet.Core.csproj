@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>DeltaDotNet.Core</AssemblyName>
+    <RootNamespace>DeltaDotNet.Core</RootNamespace>
+  </PropertyGroup>
+
+</Project>

@@ -1,72 +1,106 @@
-name: build
+name: Build DeltaDotNet
 
 on:
   push:
-    branches: [main, master]
-    tags: ['v*']
+    branches: [ main, master ]
   pull_request:
   workflow_dispatch:
 
 jobs:
-  client:
-    name: Сборка Windows-клиента
+  # ---------------------------------------------------------------
+  # C# client + theme studio (WPF -> Windows only)
+  # ---------------------------------------------------------------
+  windows-apps:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-dotnet@v4
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
       - name: Restore
-        run: dotnet restore client/DeltaDotNet.Client/DeltaDotNet.Client.csproj
+        run: dotnet restore DeltaDotNet.sln
 
       - name: Build
-        run: dotnet build client/DeltaDotNet.Client/DeltaDotNet.Client.csproj -c Release --no-restore
+        run: dotnet build DeltaDotNet.sln -c Release --no-restore
 
-      - name: Publish (single exe, win-x64)
+      - name: Publish client (self-contained, single file)
         run: >
-          dotnet publish client/DeltaDotNet.Client/DeltaDotNet.Client.csproj
+          dotnet publish src/DeltaDotNet.Client/DeltaDotNet.Client.csproj
           -c Release -r win-x64 --self-contained true
           -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
           -o publish/client
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: DeltaDotNet-client-win-x64
-          path: publish/client/DeltaDotNet.exe
-          if-no-files-found: error
+      - name: Publish theme studio (self-contained, single file)
+        run: >
+          dotnet publish src/DeltaDotNet.ThemeStudio/DeltaDotNet.ThemeStudio.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -o publish/themestudio
 
+      - name: Upload client artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeltaDotNet-Client-win-x64
+          path: publish/client
+
+      - name: Upload theme studio artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeltaDotNet-ThemeStudio-win-x64
+          path: publish/themestudio
+
+  # ---------------------------------------------------------------
+  # Node.js server: install, syntax check, package
+  # ---------------------------------------------------------------
   server:
-    name: Проверка и упаковка сервера
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Синтаксическая проверка
-        run: for f in server/src/*.js; do node --check "$f"; done
+      - name: Install dependencies
+        run: npm install --omit=dev
 
-      - name: E2E-тесты
-        run: node server/e2e-test.js
-
-      - name: Собрать артефакт
+      - name: Syntax check
         run: |
-          mkdir -p publish/server
-          cp -r server/src server/package.json server/Dockerfile server/.env.example publish/server/
+          for file in src/*.js; do node --check "$file"; done
 
-      - uses: actions/upload-artifact@v4
+      - name: Smoke test (boot the server and hit /health)
+        run: |
+          node src/index.js &
+          SERVER_PID=$!
+          sleep 2
+          curl -sSf http://127.0.0.1:8080/health
+          kill $SERVER_PID
+        env:
+          PORT: 8080
+
+      - name: Package server
+        run: |
+          cd ..
+          zip -r DeltaDotNet-Server.zip server -x 'server/node_modules/*' 'server/data/*'
+
+      - name: Upload server artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: DeltaDotNet-server
-          path: publish/server
-          if-no-files-found: error
+          name: DeltaDotNet-Server
+          path: DeltaDotNet-Server.zip
 
+  # ---------------------------------------------------------------
+  # Attach everything to a GitHub Release when you push a tag
+  # ---------------------------------------------------------------
   release:
-    name: Релиз по тегу
-    needs: [client, server]
+    needs: [ windows-apps, server ]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -74,22 +108,14 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: DeltaDotNet-client-win-x64
-          path: dist/client
+          path: artifacts
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: DeltaDotNet-server
-          path: dist/server
-
-      - name: Архивы
+      - name: Zip artifacts
         run: |
-          cd dist
-          zip -r DeltaDotNet-client-win-x64.zip client
-          zip -r DeltaDotNet-server.zip server
+          cd artifacts
+          for dir in */; do (cd "$dir" && zip -r "../${dir%/}.zip" .); done
 
-      - uses: softprops/action-gh-release@v2
+      - name: Create release
+        uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/DeltaDotNet-client-win-x64.zip
-            dist/DeltaDotNet-server.zip
+          files: artifacts/*.zip

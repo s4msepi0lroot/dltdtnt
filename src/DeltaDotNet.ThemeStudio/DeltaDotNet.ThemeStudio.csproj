@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>DeltaDotNet.ThemeStudio</AssemblyName>
+    <RootNamespace>DeltaDotNet.ThemeStudio</RootNamespace>
+    <ApplicationIcon>Assets\studio.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <Product>DeltaDotNet Theme Studio</Product>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DeltaDotNet.Core\DeltaDotNet.Core.csproj" />
+  </ItemGroup>
+
+  <Target Name="DropMissingIcon" BeforeTargets="BeforeBuild" Condition="!Exists('Assets\studio.ico')">
+    <PropertyGroup>
+      <ApplicationIcon></ApplicationIcon>
+    </PropertyGroup>
+  </Target>
+
+</Project>

@@ -1,197 +1,55 @@
-'use strict'
-const fs = require('fs')
-const path = require('path')
-const crypto = require('crypto')
+// DeltaDotNet - persistent JSON storage (users + bans + settings)
+import fs from 'node:fs'
+import path from 'node:path'
 
-const SCRYPT_KEYLEN = 32
+const DATA_DIR = process.env.DDN_DATA_DIR || path.resolve(process.cwd(), 'data')
+const DATA_FILE = path.join(DATA_DIR, 'db.json')
 
-function emptyCosmetic() {
-  return { rainbow: false, color: null, tag: null }
+const DEFAULT_DB = {
+  users: {},        // id -> user
+  usernames: {},    // lowercase username -> id
+  globalBans: {},   // userId -> { reason, at, by }
+  motd: 'Welcome to DeltaDotNet!',
+  version: 1
 }
 
-function normalizeCosmetic(value) {
-  const c = emptyCosmetic()
-  if (!value || typeof value !== 'object') return c
-  c.rainbow = !!value.rainbow
-  if (typeof value.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.color)) {
-    c.color = value.color.toUpperCase()
+let db = null
+let saveTimer = null
+
+export function loadDb () {
+  if (db) return db
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true })
+    if (fs.existsSync(DATA_FILE)) {
+      db = { ...DEFAULT_DB, ...JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')) }
+    } else {
+      db = structuredClone(DEFAULT_DB)
+      saveNow()
+    }
+  } catch (err) {
+    console.error('[store] failed to load db, starting empty:', err.message)
+    db = structuredClone(DEFAULT_DB)
   }
-  if (typeof value.tag === 'string' && value.tag.trim()) {
-    c.tag = value.tag.trim().slice(0, 16)
-  }
-  return c
+  return db
 }
 
-class UserStore {
-  constructor(filePath, adminLogin = '') {
-    this.filePath = filePath
-    this.adminLogin = String(adminLogin || '').toLowerCase()
-    this.users = new Map()
-    this._load()
-  }
+export function save () {
+  if (saveTimer) return
+  saveTimer = setTimeout(() => { saveTimer = null; saveNow() }, 250)
+}
 
-  _load() {
-    try {
-      const raw = fs.readFileSync(this.filePath, 'utf8')
-      const parsed = JSON.parse(raw)
-      for (const u of parsed.users || []) {
-        u.role = u.role || 'user'
-        u.banned = !!u.banned
-        u.banReason = u.banReason || null
-        u.cosmetic = normalizeCosmetic(u.cosmetic)
-        u.lastSeen = u.lastSeen || null
-        this.users.set(u.login.toLowerCase(), u)
-      }
-    } catch (err) {
-      if (err.code !== 'ENOENT') throw err
-      this.users = new Map()
-    }
-    this._applyAdmin()
-  }
-
-  _applyAdmin() {
-    if (!this.adminLogin) return
-    const user = this.users.get(this.adminLogin)
-    if (user && (user.role !== 'admin' || user.banned)) {
-      user.role = 'admin'
-      user.banned = false
-      user.banReason = null
-      this._save()
-    }
-  }
-
-  _save() {
-    const dir = path.dirname(this.filePath)
-    fs.mkdirSync(dir, { recursive: true })
-    const tmp = this.filePath + '.tmp'
-    fs.writeFileSync(tmp, JSON.stringify({ users: [...this.users.values()] }, null, 2))
-    fs.renameSync(tmp, this.filePath)
-  }
-
-  static hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
-    const hash = crypto.scryptSync(password, salt, SCRYPT_KEYLEN).toString('hex')
-    return { salt, hash }
-  }
-
-  has(login) {
-    return this.users.has(String(login).toLowerCase())
-  }
-
-  raw(login) {
-    return this.users.get(String(login).toLowerCase()) || null
-  }
-
-  publicUser(login) {
-    const u = this.raw(login)
-    if (!u) return null
-    return {
-      login: u.login,
-      role: u.role,
-      banned: u.banned,
-      banReason: u.banReason,
-      cosmetic: u.cosmetic,
-      createdAt: u.createdAt,
-      lastSeen: u.lastSeen,
-    }
-  }
-
-  isAdmin(login) {
-    const u = this.raw(login)
-    return !!u && u.role === 'admin'
-  }
-
-  create(login, password) {
-    const key = String(login).toLowerCase()
-    if (this.users.has(key)) throw new Error('user_exists')
-    const { salt, hash } = UserStore.hashPassword(password)
-    const user = {
-      login: String(login),
-      salt,
-      hash,
-      role: key === this.adminLogin ? 'admin' : 'user',
-      banned: false,
-      banReason: null,
-      cosmetic: emptyCosmetic(),
-      createdAt: new Date().toISOString(),
-      lastSeen: null,
-    }
-    this.users.set(key, user)
-    this._save()
-    return this.publicUser(user.login)
-  }
-
-  verify(login, password) {
-    const user = this.raw(login)
-    if (!user) return null
-    const candidate = crypto.scryptSync(password, user.salt, SCRYPT_KEYLEN)
-    const known = Buffer.from(user.hash, 'hex')
-    if (candidate.length !== known.length) return null
-    if (!crypto.timingSafeEqual(candidate, known)) return null
-    return this.publicUser(user.login)
-  }
-
-  touch(login) {
-    const user = this.raw(login)
-    if (!user) return
-    user.lastSeen = new Date().toISOString()
-    this._save()
-  }
-
-  setBanned(login, banned, reason = null) {
-    const user = this.raw(login)
-    if (!user) return null
-    if (user.role === 'admin' && banned) throw new Error('cannot_ban_admin')
-    user.banned = !!banned
-    user.banReason = banned ? (reason ? String(reason).slice(0, 120) : 'без указания причины') : null
-    this._save()
-    return this.publicUser(user.login)
-  }
-
-  setRole(login, role) {
-    const user = this.raw(login)
-    if (!user) return null
-    if (role !== 'admin' && role !== 'user') throw new Error('bad_role')
-    if (user.login.toLowerCase() === this.adminLogin && role !== 'admin') {
-      throw new Error('cannot_demote_owner')
-    }
-    user.role = role
-    this._save()
-    return this.publicUser(user.login)
-  }
-
-  setCosmetic(login, cosmetic) {
-    const user = this.raw(login)
-    if (!user) return null
-    user.cosmetic = normalizeCosmetic(cosmetic)
-    this._save()
-    return this.publicUser(user.login)
-  }
-
-  setPassword(login, password) {
-    const user = this.raw(login)
-    if (!user) return null
-    const { salt, hash } = UserStore.hashPassword(password)
-    user.salt = salt
-    user.hash = hash
-    this._save()
-    return this.publicUser(user.login)
-  }
-
-  remove(login) {
-    const key = String(login).toLowerCase()
-    const user = this.users.get(key)
-    if (!user) return false
-    if (key === this.adminLogin) throw new Error('cannot_delete_owner')
-    this.users.delete(key)
-    this._save()
-    return true
-  }
-
-  list() {
-    return [...this.users.keys()]
-      .map((k) => this.publicUser(k))
-      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+export function saveNow () {
+  if (!db) return
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true })
+    fs.writeFileSync(DATA_FILE + '.tmp', JSON.stringify(db, null, 2))
+    fs.renameSync(DATA_FILE + '.tmp', DATA_FILE)
+  } catch (err) {
+    console.error('[store] save failed:', err.message)
   }
 }
 
-module.exports = { UserStore, emptyCosmetic, normalizeCosmetic }
+process.on('SIGINT', () => { saveNow(); process.exit(0) })
+process.on('SIGTERM', () => { saveNow(); process.exit(0) })
+
+export function getDb () { return loadDb() }

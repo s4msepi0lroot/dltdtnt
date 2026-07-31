@@ -1,261 +1,302 @@
-'use strict'
-const crypto = require('crypto')
-const { EventEmitter } = require('events')
+// DeltaDotNet - realtime layer: lobby rooms, video relay (binary), input relay (JSON)
+import { WebSocketServer } from 'ws'
+import { verifyToken, isOwner, publicUser } from './auth.js'
+import { getDb, save } from './store.js'
+import {
+  getLobby, deleteLobby, detail, canJoin, addMember,
+  removeMember, banMember, allLobbies
+} from './lobbies.js'
 
-const GUID = '258EAFA5-E914-47DA-95CA-5AB0DC85B11F'
+// Binary frame layout sent by the host:
+//   byte 0      : payload type (1 = JPEG video frame)
+//   bytes 1..4  : uint32 BE sequence number
+//   bytes 5..8  : uint32 BE frame width
+//   bytes 9..12 : uint32 BE frame height
+//   bytes 13..  : JPEG data
+const PAYLOAD_VIDEO = 1
 
-const OP = {
-  CONT: 0x0,
-  TEXT: 0x1,
-  BINARY: 0x2,
-  CLOSE: 0x8,
-  PING: 0x9,
-  PONG: 0xa,
-}
+const sockets = new Set() // every authenticated socket
 
-function encodeFrame(opcode, payload, { mask = false, fin = true } = {}) {
-  const data = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload), 'utf8')
-  const len = data.length
-  let header
-  if (len < 126) {
-    header = Buffer.alloc(2)
-    header[1] = len
-  } else if (len < 65536) {
-    header = Buffer.alloc(4)
-    header[1] = 126
-    header.writeUInt16BE(len, 2)
-  } else {
-    header = Buffer.alloc(10)
-    header[1] = 127
-    header.writeBigUInt64BE(BigInt(len), 2)
-  }
-  header[0] = (fin ? 0x80 : 0x00) | (opcode & 0x0f)
-  if (!mask) return Buffer.concat([header, data])
+export function attachWebSocket (server) {
+  const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 8 * 1024 * 1024 })
 
-  header[1] |= 0x80
-  const key = crypto.randomBytes(4)
-  const masked = Buffer.allocUnsafe(len)
-  for (let i = 0; i < len; i++) masked[i] = data[i] ^ key[i % 4]
-  return Buffer.concat([header, key, masked])
-}
+  wss.on('connection', (ws) => {
+    ws.ddn = { user: null, lobbyId: null, alive: true }
+    ws.on('pong', () => { ws.ddn.alive = true })
 
-class WsConnection extends EventEmitter {
-  constructor(socket, opts = {}) {
-    super()
-    this.socket = socket
-    this.maxPayload = opts.maxPayload || 8 * 1024 * 1024
-    this.closed = false
-    this.buffer = Buffer.alloc(0)
-    this.fragments = []
-    this.fragmentOpcode = null
-    this.isAlive = true
-    this.ctx = {}
-
-    socket.on('data', (chunk) => this._onData(chunk))
-    socket.on('close', () => this._finish())
-    socket.on('end', () => {
-      this._finish()
+    ws.on('message', (data, isBinary) => {
       try {
-        socket.destroy()
-      } catch (_) {}
-    })
-    socket.on('error', (err) => {
-      this.emit('error', err)
-      this._finish()
-    })
-  }
-
-  get remoteAddress() {
-    return this.socket.remoteAddress
-  }
-
-  sendText(str) {
-    this._send(OP.TEXT, Buffer.from(str, 'utf8'))
-  }
-
-  sendJson(obj) {
-    this.sendText(JSON.stringify(obj))
-  }
-
-  sendBinary(buf) {
-    this._send(OP.BINARY, buf)
-  }
-
-  ping() {
-    this._send(OP.PING, Buffer.alloc(0))
-  }
-
-  get bufferedAmount() {
-    return this.socket.writableLength || 0
-  }
-
-  close(code = 1000, reason = '') {
-    if (this.closed) return
-    const payload = Buffer.alloc(2 + Buffer.byteLength(reason))
-    payload.writeUInt16BE(code, 0)
-    payload.write(reason, 2)
-    try {
-      this.socket.write(encodeFrame(OP.CLOSE, payload))
-    } catch (_) {}
-    this._finish()
-    try {
-      this.socket.end()
-    } catch (_) {}
-  }
-
-  _send(opcode, payload) {
-    if (this.closed) return
-    try {
-      this.socket.write(encodeFrame(opcode, payload))
-    } catch (err) {
-      this.emit('error', err)
-      this._finish()
-    }
-  }
-
-  _finish() {
-    if (this.closed) return
-    this.closed = true
-    this.emit('close')
-  }
-
-  _onData(chunk) {
-    this.buffer = this.buffer.length ? Buffer.concat([this.buffer, chunk]) : chunk
-    while (true) {
-      const frame = this._readFrame()
-      if (!frame) break
-      this._handleFrame(frame)
-      if (this.closed) break
-    }
-  }
-
-  _readFrame() {
-    const buf = this.buffer
-    if (buf.length < 2) return null
-    const fin = (buf[0] & 0x80) !== 0
-    const opcode = buf[0] & 0x0f
-    const masked = (buf[1] & 0x80) !== 0
-    let len = buf[1] & 0x7f
-    let offset = 2
-
-    if (len === 126) {
-      if (buf.length < offset + 2) return null
-      len = buf.readUInt16BE(offset)
-      offset += 2
-    } else if (len === 127) {
-      if (buf.length < offset + 8) return null
-      const big = buf.readBigUInt64BE(offset)
-      if (big > BigInt(this.maxPayload)) {
-        this.close(1009, 'payload too large')
-        return null
+        if (isBinary) handleBinary(ws, data)
+        else handleText(ws, data.toString('utf8'))
+      } catch (err) {
+        console.error('[ws] message error:', err.message)
       }
-      len = Number(big)
-      offset += 8
-    }
-    if (len > this.maxPayload) {
-      this.close(1009, 'payload too large')
-      return null
-    }
+    })
 
-    let key = null
-    if (masked) {
-      if (buf.length < offset + 4) return null
-      key = buf.subarray(offset, offset + 4)
-      offset += 4
-    }
-    if (buf.length < offset + len) return null
-
-    const payload = Buffer.from(buf.subarray(offset, offset + len))
-    if (masked) for (let i = 0; i < len; i++) payload[i] ^= key[i % 4]
-    this.buffer = buf.subarray(offset + len)
-    return { fin, opcode, payload }
-  }
-
-  _handleFrame(frame) {
-    const { fin, opcode, payload } = frame
-    switch (opcode) {
-      case OP.PING:
-        this._send(OP.PONG, payload)
-        return
-      case OP.PONG:
-        this.isAlive = true
-        return
-      case OP.CLOSE:
-        this.close(1000, '')
-        return
-      case OP.TEXT:
-      case OP.BINARY:
-        if (fin) {
-          this._emitMessage(opcode, payload)
-        } else {
-          this.fragmentOpcode = opcode
-          this.fragments = [payload]
-        }
-        return
-      case OP.CONT: {
-        this.fragments.push(payload)
-        if (!fin) return
-        const full = Buffer.concat(this.fragments)
-        const op = this.fragmentOpcode
-        this.fragments = []
-        this.fragmentOpcode = null
-        this._emitMessage(op, full)
-        return
-      }
-      default:
-        this.close(1002, 'bad opcode')
-    }
-  }
-
-  _emitMessage(opcode, payload) {
-    this.isAlive = true
-    if (opcode === OP.TEXT) {
-      this.emit('message', { type: 'text', data: payload.toString('utf8') })
-    } else {
-      this.emit('message', { type: 'binary', data: payload })
-    }
-  }
-}
-
-function attach(server, opts) {
-  const path = opts.path || '/ws'
-  const connections = new Set()
-
-  server.on('upgrade', (req, socket) => {
-    const url = req.url.split('?')[0]
-    const key = req.headers['sec-websocket-key']
-    if (url !== path || !key || (req.headers.upgrade || '').toLowerCase() !== 'websocket') {
-      socket.write('HTTP/1.1 400 Bad Request\r\n\r\n')
-      socket.destroy()
-      return
-    }
-    const accept = crypto.createHash('sha1').update(key + GUID).digest('base64')
-    socket.write(
-      'HTTP/1.1 101 Switching Protocols\r\n' +
-        'Upgrade: websocket\r\n' +
-        'Connection: Upgrade\r\n' +
-        `Sec-WebSocket-Accept: ${accept}\r\n\r\n`
-    )
-    socket.setNoDelay(true)
-    const conn = new WsConnection(socket, { maxPayload: opts.maxPayload })
-    connections.add(conn)
-    conn.on('close', () => connections.delete(conn))
-    opts.onConnection(conn, req)
+    ws.on('close', () => {
+      sockets.delete(ws)
+      handleLeave(ws, 'disconnected')
+    })
   })
 
-  const interval = setInterval(() => {
-    for (const conn of connections) {
-      if (!conn.isAlive) {
-        conn.close(1001, 'timeout')
-        continue
-      }
-      conn.isAlive = false
-      conn.ping()
+  const heartbeat = setInterval(() => {
+    for (const ws of sockets) {
+      if (!ws.ddn.alive) { ws.terminate(); continue }
+      ws.ddn.alive = false
+      try { ws.ping() } catch {}
     }
-  }, opts.heartbeatMs || 20000)
-  interval.unref?.()
+  }, 20000)
+  wss.on('close', () => clearInterval(heartbeat))
 
-  return { connections }
+  return wss
 }
 
-module.exports = { attach, encodeFrame, WsConnection, OP }
+function send (ws, obj) {
+  if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj))
+}
+
+function fail (ws, message) {
+  send(ws, { t: 'error', message })
+}
+
+function socketsInLobby (lobbyId) {
+  return [...sockets].filter(s => s.ddn.lobbyId === lobbyId)
+}
+
+function broadcastLobby (lobby, obj, exceptWs = null) {
+  for (const s of socketsInLobby(lobby.id)) {
+    if (s !== exceptWs) send(s, obj)
+  }
+}
+
+function pushLobbyState (lobby) {
+  broadcastLobby(lobby, { t: 'lobby', lobby: detail(lobby) })
+}
+
+function handleText (ws, raw) {
+  const msg = JSON.parse(raw)
+  const state = ws.ddn
+
+  if (msg.t === 'auth') {
+    const user = verifyToken(msg.token)
+    if (!user) return fail(ws, 'Invalid or expired token')
+    if (getDb().globalBans[user.id]) return fail(ws, 'Account banned')
+    state.user = user
+    user.lastSeen = Date.now(); save()
+    sockets.add(ws)
+    return send(ws, { t: 'authed', user: publicUser(user), motd: getDb().motd })
+  }
+
+  if (!state.user) return fail(ws, 'Not authenticated')
+  const user = state.user
+
+  switch (msg.t) {
+    case 'join': {
+      const lobby = getLobby(msg.lobbyId)
+      const reason = canJoin(lobby, user, msg.password)
+      if (reason) return fail(ws, reason)
+      const member = addMember(lobby, user)
+      state.lobbyId = lobby.id
+      send(ws, { t: 'joined', lobby: detail(lobby), slot: member.slot, isHost: lobby.hostId === user.id })
+      pushLobbyState(lobby)
+      break
+    }
+
+    case 'leave': {
+      handleLeave(ws, 'left')
+      send(ws, { t: 'left' })
+      break
+    }
+
+    case 'ready': {
+      const lobby = getLobby(state.lobbyId)
+      if (!lobby) return fail(ws, 'You are not in a lobby')
+      const member = lobby.members.get(user.id)
+      if (member) member.ready = !!msg.ready
+      pushLobbyState(lobby)
+      break
+    }
+
+    case 'quality': {
+      const lobby = getLobby(state.lobbyId)
+      if (!lobby) return fail(ws, 'You are not in a lobby')
+      if (lobby.hostId !== user.id) return fail(ws, 'Only the host can change quality')
+      lobby.quality = {
+        fps: Math.min(60, Math.max(5, Number(msg.fps) || lobby.quality.fps)),
+        scale: Math.min(100, Math.max(25, Number(msg.scale) || lobby.quality.scale)),
+        jpegQuality: Math.min(95, Math.max(20, Number(msg.jpegQuality) || lobby.quality.jpegQuality))
+      }
+      pushLobbyState(lobby)
+      break
+    }
+
+    case 'start': {
+      const lobby = getLobby(state.lobbyId)
+      if (!lobby) return fail(ws, 'You are not in a lobby')
+      if (lobby.hostId !== user.id) return fail(ws, 'Only the host can start the game')
+      lobby.state = 'playing'
+      broadcastLobby(lobby, { t: 'started', quality: lobby.quality, lobby: detail(lobby) })
+      break
+    }
+
+    case 'stop': {
+      const lobby = getLobby(state.lobbyId)
+      if (!lobby || lobby.hostId !== user.id) return fail(ws, 'Only the host can stop the game')
+      lobby.state = 'lobby'
+      broadcastLobby(lobby, { t: 'stopped' })
+      pushLobbyState(lobby)
+      break
+    }
+
+    // Guest -> server -> host. The host injects the key into the game.
+    case 'input': {
+      const lobby = getLobby(state.lobbyId)
+      if (!lobby || lobby.state !== 'playing') return
+      const member = lobby.members.get(user.id)
+      if (!member) return
+      const hostSocket = socketsInLobby(lobby.id).find(s => s.ddn.user.id === lobby.hostId)
+      if (!hostSocket) return
+      send(hostSocket, {
+        t: 'input',
+        slot: member.slot,
+        userId: user.id,
+        action: String(msg.action || '').slice(0, 32),
+        down: !!msg.down
+      })
+      break
+    }
+
+    case 'chat': {
+      const lobby = getLobby(state.lobbyId)
+      if (!lobby) return
+      broadcastLobby(lobby, {
+        t: 'chat',
+        from: user.username,
+        rainbow: !!user.rainbow,
+        nameColor: user.nameColor || null,
+        text: String(msg.text || '').slice(0, 300),
+        at: Date.now()
+      })
+      break
+    }
+
+    case 'kick':
+    case 'ban': {
+      const lobby = getLobby(state.lobbyId)
+      if (!lobby) return fail(ws, 'You are not in a lobby')
+      if (lobby.hostId !== user.id && !isOwner(user)) return fail(ws, 'Only the host can do that')
+      const targetId = msg.userId
+      if (targetId === lobby.hostId) return fail(ws, 'The host cannot be removed')
+      const target = lobby.members.get(targetId)
+      const targetName = target ? target.user.username : 'player'
+      if (msg.t === 'ban') banMember(lobby, targetId, targetName, msg.reason)
+      else removeMember(lobby, targetId)
+      for (const s of socketsInLobby(lobby.id)) {
+        if (s.ddn.user.id === targetId) {
+          send(s, { t: 'kicked', banned: msg.t === 'ban', reason: msg.reason || null })
+          s.ddn.lobbyId = null
+        }
+      }
+      pushLobbyState(lobby)
+      break
+    }
+
+    case 'unban': {
+      const lobby = getLobby(state.lobbyId)
+      if (!lobby || (lobby.hostId !== user.id && !isOwner(user))) return fail(ws, 'Only the host can do that')
+      lobby.bans.delete(msg.userId)
+      pushLobbyState(lobby)
+      break
+    }
+
+    // Host closes (deletes) the lobby; everyone returns to the lobby browser.
+    case 'close': {
+      const lobby = getLobby(state.lobbyId)
+      if (!lobby) return fail(ws, 'You are not in a lobby')
+      if (lobby.hostId !== user.id && !isOwner(user)) return fail(ws, 'Only the host can close the lobby')
+      closeLobby(lobby, 'The host closed the lobby')
+      break
+    }
+
+    case 'ping':
+      send(ws, { t: 'pong', at: Date.now() })
+      break
+
+    default:
+      fail(ws, 'Unknown message type: ' + msg.t)
+  }
+}
+
+function handleBinary (ws, buffer) {
+  const state = ws.ddn
+  if (!state.user || !state.lobbyId) return
+  const lobby = getLobby(state.lobbyId)
+  if (!lobby || lobby.hostId !== state.user.id) return // only the host streams
+  if (buffer[0] !== PAYLOAD_VIDEO) return
+  for (const s of socketsInLobby(lobby.id)) {
+    if (s === ws) continue
+    if (s.readyState === s.OPEN && s.bufferedAmount < 4 * 1024 * 1024) {
+      s.send(buffer, { binary: true })
+    }
+  }
+}
+
+function handleLeave (ws, reason) {
+  const state = ws.ddn
+  if (!state || !state.lobbyId) return
+  const lobby = getLobby(state.lobbyId)
+  state.lobbyId = null
+  if (!lobby || !state.user) return
+  if (lobby.hostId === state.user.id && reason === 'left') {
+    // Host leaving without closing keeps the lobby alive for a rejoin,
+    // but the game is stopped.
+    lobby.state = 'lobby'
+  }
+  removeMember(lobby, state.user.id)
+  if (lobby.members.size === 0) {
+    deleteLobby(lobby.id)
+    return
+  }
+  pushLobbyState(lobby)
+}
+
+export function closeLobby (lobby, message) {
+  for (const s of socketsInLobby(lobby.id)) {
+    send(s, { t: 'lobbyClosed', message })
+    s.ddn.lobbyId = null
+  }
+  deleteLobby(lobby.id)
+}
+
+export function adminBroadcast (text) {
+  for (const s of sockets) send(s, { t: 'announce', text })
+}
+
+export function disconnectUser (userId, message) {
+  for (const s of sockets) {
+    if (s.ddn.user && s.ddn.user.id === userId) {
+      send(s, { t: 'forceLogout', message })
+      setTimeout(() => { try { s.close() } catch {} }, 200)
+    }
+  }
+}
+
+export function onlineCount () {
+  return sockets.size
+}
+
+export function onlineUsers () {
+  return [...sockets]
+    .filter(s => s.ddn.user)
+    .map(s => ({ ...publicUser(s.ddn.user), lobbyId: s.ddn.lobbyId }))
+}
+
+export function serverStats () {
+  return {
+    online: onlineCount(),
+    lobbies: allLobbies().length,
+    playing: allLobbies().filter(l => l.state === 'playing').length,
+    users: Object.keys(getDb().users).length,
+    uptimeSec: Math.round(process.uptime())
+  }
+}
