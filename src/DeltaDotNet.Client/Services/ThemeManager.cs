@@ -6,10 +6,6 @@ using DeltaDotNet.Core;
 
 namespace DeltaDotNet.Client.Services;
 
-/// <summary>
-/// Loads .ddntheme packages and applies them to the live WPF resource dictionary.
-/// Also owns background music playback.
-/// </summary>
 public class ThemeManager
 {
     public ThemePackage Current { get; private set; }
@@ -23,7 +19,6 @@ public class ThemeManager
 
     public event Action ThemeChanged;
 
-    /// <summary>Every .ddntheme file in %AppData%\DeltaDotNet\themes</summary>
     public static IEnumerable<string> AvailableThemes()
     {
         try { return Directory.GetFiles(AppSettings.ThemesFolder, "*" + ThemePackage.Extension); }
@@ -53,7 +48,6 @@ public class ThemeManager
         ThemeChanged?.Invoke();
     }
 
-    /// <summary>Loads and applies a theme file. Returns false with an error message on failure.</summary>
     public bool TryApplyFile(string path, out string error)
     {
         error = null;
@@ -77,7 +71,6 @@ public class ThemeManager
         }
     }
 
-    /// <summary>Copies a theme file into the themes folder so it shows up in Settings.</summary>
     public string ImportTheme(string sourcePath)
     {
         var target = Path.Combine(AppSettings.ThemesFolder, Path.GetFileName(sourcePath));
@@ -131,7 +124,6 @@ public class ThemeManager
         catch { return null; }
     }
 
-    /// <summary>Loads Assets/logo.png that ships with the client (user-replaceable).</summary>
     public static BitmapImage LoadBuiltInLogo()
     {
         try
@@ -144,7 +136,6 @@ public class ThemeManager
         catch { return null; }
     }
 
-    // ---------------- music ----------------
     public void PlayMusic(ThemePackage package)
     {
         StopMusic();

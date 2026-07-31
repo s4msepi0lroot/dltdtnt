@@ -4,10 +4,6 @@ using DeltaDotNet.Core;
 
 namespace DeltaDotNet.Client.Services;
 
-/// <summary>
-/// Host-side keyboard injection. When a guest presses a key, the host receives the
-/// logical action and presses the key the local co-op mod expects for that player slot.
-/// </summary>
 public static class InputInjector
 {
     [DllImport("user32.dll", SetLastError = true)]
@@ -62,16 +58,14 @@ public static class InputInjector
         public ushort wParamL, wParamH;
     }
 
-    /// <summary>Extended keys need the extended flag or games read them as numpad keys.</summary>
     private static bool IsExtended(int vk) => vk switch
     {
         KeyBindings.VK_LEFT or KeyBindings.VK_UP or KeyBindings.VK_RIGHT or KeyBindings.VK_DOWN => true,
         KeyBindings.VK_RCONTROL => true,
-        0x2D or 0x2E or 0x24 or 0x23 or 0x21 or 0x22 => true, // Ins Del Home End PgUp PgDn
+        0x2D or 0x2E or 0x24 or 0x23 or 0x21 or 0x22 => true,
         _ => false
     };
 
-    /// <summary>Presses or releases a raw virtual key.</summary>
     public static void SendKey(int virtualKey, bool down)
     {
         if (virtualKey <= 0) return;
@@ -94,17 +88,12 @@ public static class InputInjector
         SendInput(1, inputs, Marshal.SizeOf<INPUT>());
     }
 
-    /// <summary>
-    /// Translates a remote logical action into the physical key the game expects
-    /// for that player slot and injects it.
-    /// </summary>
     public static void SendAction(AppSettings settings, int slot, string action, bool down)
     {
         var vk = settings.OutputFor(slot).Get(action);
         if (vk > 0) SendKey(vk, down);
     }
 
-    /// <summary>Releases every key of every slot — used when the game stops or a player leaves.</summary>
     public static void ReleaseAll(AppSettings settings)
     {
         foreach (var slot in settings.OutputBindings.Keys.ToList())
@@ -115,7 +104,6 @@ public static class InputInjector
             }
     }
 
-    /// <summary>Brings the captured game window to the foreground so injected keys reach it.</summary>
     public static void FocusGameWindow(AppSettings settings)
     {
         var hWnd = ScreenCapture.ResolveTarget(settings);

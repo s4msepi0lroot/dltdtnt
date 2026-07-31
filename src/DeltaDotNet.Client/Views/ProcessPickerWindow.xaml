@@ -13,8 +13,6 @@
         <DockPanel>
             <TabControl x:Name="Tabs" DockPanel.Dock="Top" SelectionChanged="Tabs_Changed" Height="42">
                 <TabItem Header="{loc:Tr picker.tab.apps}" />
-                <TabItem Header="{loc:Tr picker.tab.processes}" />
-                <TabItem Header="{loc:Tr picker.tab.windows}" />
             </TabControl>
 
             <StackPanel DockPanel.Dock="Bottom">

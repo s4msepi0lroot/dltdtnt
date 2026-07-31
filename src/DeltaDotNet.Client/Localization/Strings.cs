@@ -208,8 +208,6 @@ public static class Strings
         // ---------------- process picker ----------------
         ["picker.title"] = new("Process List", "Список процессов"),
         ["picker.tab.apps"] = new("Applications", "Приложения"),
-        ["picker.tab.processes"] = new("Processes", "Процессы"),
-        ["picker.tab.windows"] = new("Windows", "Окна"),
         ["picker.filter"] = new("Filter", "Фильтр"),
         ["picker.attach"] = new("Attach", "Выбрать"),
         ["picker.hint"] = new("Double-click an entry to select it.", "Двойной клик по строке выбрать."),
