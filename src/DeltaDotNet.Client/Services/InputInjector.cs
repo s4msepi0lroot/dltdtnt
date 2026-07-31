@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Runtime.InteropServices;
 using DeltaDotNet.Core;
 
