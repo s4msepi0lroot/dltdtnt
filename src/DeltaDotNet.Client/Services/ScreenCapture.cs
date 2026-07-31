@@ -223,7 +223,10 @@ public class ScreenCapture : IDisposable
 
         using var output = new MemoryStream();
         using var parameters = new EncoderParameters(1);
-        parameters.Param[0] = new EncoderParameter(Encoder.Quality, (long)Math.Clamp(quality.JpegQuality, 20, 95));
+        // Fully qualified: "Encoder" alone is ambiguous with System.Text.Encoder.
+        parameters.Param[0] = new EncoderParameter(
+            System.Drawing.Imaging.Encoder.Quality,
+            (long)Math.Clamp(quality.JpegQuality, 20, 95));
         scaled.Save(output, _jpegCodec, parameters);
         return output.ToArray();
     }
