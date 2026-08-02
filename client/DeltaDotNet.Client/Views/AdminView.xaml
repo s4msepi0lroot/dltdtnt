@@ -1,0 +1,47 @@
+<UserControl x:Class="DeltaDotNet.Client.Views.AdminView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Margin="16">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="420" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Style="{DynamicResource DdnBox}" Margin="0,0,12,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Grid.Row="0" Orientation="Horizontal">
+                    <TextBlock Text="* USERS" Style="{DynamicResource DdnTitle}" />
+                    <Button Content="REFRESH" Style="{DynamicResource DdnButton}" Click="Refresh_Click" Margin="18,0,0,8" />
+                    <TextBox x:Name="FilterBox" Style="{DynamicResource DdnInput}" Width="200" Margin="18,0,0,8"
+                             TextChanged="Filter_Changed" />
+                </StackPanel>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="UsersPanel" />
+                </ScrollViewer>
+            </Grid>
+        </Border>
+
+        <Border Grid.Column="1" Style="{DynamicResource DdnBox}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="* CONTROL ROOM" Style="{DynamicResource DdnTitle}" />
+                    <TextBlock x:Name="StatsText" Style="{DynamicResource DdnText}" TextWrapping="Wrap" Margin="0,0,0,12" />
+
+                    <WrapPanel>
+                        <Button Content="BROADCAST" Style="{DynamicResource DdnButton}" Click="Broadcast_Click" />
+                        <Button Content="SET MOTD" Style="{DynamicResource DdnButton}" Click="Motd_Click" />
+                        <Button Content="MAINTENANCE ON/OFF" Style="{DynamicResource DdnButton}" Click="Maintenance_Click" />
+                        <Button Content="REFRESH STATS" Style="{DynamicResource DdnButton}" Click="Stats_Click" />
+                    </WrapPanel>
+
+                    <TextBlock Text="* LIVE LOBBIES" Style="{DynamicResource DdnTitle}" FontSize="20" Margin="0,14,0,6" />
+                    <StackPanel x:Name="LobbiesPanel" />
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

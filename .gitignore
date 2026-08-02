@@ -4,17 +4,15 @@ obj/
 publish/
 *.user
 *.suo
-.vs/
 
 # Node
 node_modules/
-server/data/
 npm-debug.log*
 
-# Build output
+# server runtime data
+server/data/
+server/.env
+
+# build artefacts
 *.zip
 *.ddntheme
-
-# OS
-Thumbs.db
-.DS_Store

@@ -1,121 +1,116 @@
-name: Build DeltaDotNet
+name: build DeltaDotNet
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ "**" ]
+    tags: [ "v*" ]
   pull_request:
   workflow_dispatch:
 
 jobs:
-  # ---------------------------------------------------------------
-  # C# client + theme studio (WPF -> Windows only)
-  # ---------------------------------------------------------------
-  windows-apps:
+  # ------------------------------------------------------------------ client
+  windows:
+    name: Client + Theme Studio (Windows)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Set up .NET 8
+      - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: 8.0.x
 
       - name: Restore
-        run: dotnet restore DeltaDotNet.sln
+        run: |
+          dotnet restore client/DeltaDotNet.Client/DeltaDotNet.Client.csproj
+          dotnet restore client/DeltaDotNet.ThemeStudio/DeltaDotNet.ThemeStudio.csproj
 
-      - name: Build
-        run: dotnet build DeltaDotNet.sln -c Release --no-restore
-
-      - name: Publish client (self-contained, single file)
+      - name: Publish the client
         run: >
-          dotnet publish src/DeltaDotNet.Client/DeltaDotNet.Client.csproj
+          dotnet publish client/DeltaDotNet.Client/DeltaDotNet.Client.csproj
           -c Release -r win-x64 --self-contained true
           -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true -p:DebugType=none
           -o publish/client
 
-      - name: Publish theme studio (self-contained, single file)
+      - name: Publish Theme Studio
         run: >
-          dotnet publish src/DeltaDotNet.ThemeStudio/DeltaDotNet.ThemeStudio.csproj
+          dotnet publish client/DeltaDotNet.ThemeStudio/DeltaDotNet.ThemeStudio.csproj
           -c Release -r win-x64 --self-contained true
           -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true -p:DebugType=none
           -o publish/themestudio
 
-      - name: Upload client artifact
+      - name: Upload the client
         uses: actions/upload-artifact@v4
         with:
-          name: DeltaDotNet-Client-win-x64
+          name: DeltaDotNet-client-win-x64
           path: publish/client
 
-      - name: Upload theme studio artifact
+      - name: Upload Theme Studio
         uses: actions/upload-artifact@v4
         with:
-          name: DeltaDotNet-ThemeStudio-win-x64
+          name: DeltaDotNet-themestudio-win-x64
           path: publish/themestudio
 
-  # ---------------------------------------------------------------
-  # Node.js server: install, syntax check, package
-  # ---------------------------------------------------------------
-  server:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: server
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: npm install --omit=dev
-
-      - name: Syntax check
+      - name: Zip for the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
         run: |
-          for file in src/*.js; do node --check "$file"; done
+          Compress-Archive -Path publish/client/*      -DestinationPath DeltaDotNet-client-win-x64.zip
+          Compress-Archive -Path publish/themestudio/* -DestinationPath DeltaDotNet-themestudio-win-x64.zip
 
-      - name: Smoke test (boot the server and hit /health)
-        run: |
-          node src/index.js &
-          SERVER_PID=$!
-          sleep 2
-          curl -sSf http://127.0.0.1:8080/health
-          kill $SERVER_PID
-        env:
-          PORT: 8080
-
-      - name: Package server
-        run: |
-          cd ..
-          zip -r DeltaDotNet-Server.zip server -x 'server/node_modules/*' 'server/data/*'
-
-      - name: Upload server artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: DeltaDotNet-Server
-          path: DeltaDotNet-Server.zip
-
-  # ---------------------------------------------------------------
-  # Attach everything to a GitHub Release when you push a tag
-  # ---------------------------------------------------------------
-  release:
-    needs: [ windows-apps, server ]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Zip artifacts
-        run: |
-          cd artifacts
-          for dir in */; do (cd "$dir" && zip -r "../${dir%/}.zip" .); done
-
-      - name: Create release
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*.zip
+          files: |
+            DeltaDotNet-client-win-x64.zip
+            DeltaDotNet-themestudio-win-x64.zip
+
+  # ------------------------------------------------------------------ server
+  server:
+    name: Server (Node.js)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: server
+        run: npm install --no-audit --no-fund
+
+      - name: Syntax check
+        working-directory: server
+        run: |
+          for f in src/*.js; do node --check "$f"; done
+
+      - name: Smoke test (start and ping /api/health)
+        working-directory: server
+        env:
+          DDN_SECRET: ci-secret
+          PORT: 8080
+        run: |
+          node src/index.js &
+          pid=$!
+          sleep 3
+          curl -sf http://127.0.0.1:8080/api/health
+          kill $pid
+
+      - name: Pack the server
+        run: |
+          mkdir -p out
+          cp -r server out/server
+          rm -rf out/server/node_modules out/server/data
+
+      - name: Upload the server
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeltaDotNet-server
+          path: out/server

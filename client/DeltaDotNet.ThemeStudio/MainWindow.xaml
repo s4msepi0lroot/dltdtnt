@@ -1,0 +1,142 @@
+<Window x:Class="DeltaDotNet.ThemeStudio.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="DeltaDotNet Theme Studio" Height="760" Width="1180"
+        MinHeight="560" MinWidth="900"
+        Background="{StaticResource StudioBg}"
+        WindowStartupLocation="CenterScreen">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- top bar -->
+        <Border Grid.Row="0" Background="{StaticResource StudioPanel}" BorderBrush="{StaticResource StudioBorder}"
+                BorderThickness="0,0,0,2" Padding="10,6">
+            <StackPanel Orientation="Horizontal">
+                <Image x:Name="LogoImage" Height="28" Margin="0,0,10,0" Visibility="Collapsed" />
+                <TextBlock x:Name="LogoText" Text="DELTA.DOTNET THEME STUDIO" FontSize="20"
+                           Foreground="{StaticResource StudioAccent}" VerticalAlignment="Center" Margin="0,0,20,0" />
+                <Button Content="NEW" Click="New_Click" />
+                <Button Content="OPEN .ddntheme" Click="Open_Click" />
+                <Button Content="COMPILE .ddntheme" Click="Compile_Click" />
+                <Button Content="INSTALL TO THE CLIENT" Click="Install_Click" />
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="440" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- editor -->
+            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" Margin="10">
+                <StackPanel>
+                    <TextBlock Text="INFO" FontSize="18" Foreground="{StaticResource StudioAccent}" />
+                    <TextBlock Text="Theme name" />
+                    <TextBox x:Name="NameBox" TextChanged="Any_Changed" />
+                    <TextBlock Text="Author" />
+                    <TextBox x:Name="AuthorBox" TextChanged="Any_Changed" />
+                    <TextBlock Text="Version" />
+                    <TextBox x:Name="VersionBox" TextChanged="Any_Changed" />
+                    <TextBlock Text="Description" />
+                    <TextBox x:Name="DescBox" AcceptsReturn="True" Height="60" TextWrapping="Wrap" TextChanged="Any_Changed" />
+
+                    <TextBlock Text="COLORS (#AARRGGBB or #RRGGBB)" FontSize="18" Foreground="{StaticResource StudioAccent}" Margin="0,12,0,4" />
+                    <StackPanel x:Name="ColorPanel" />
+
+                    <TextBlock Text="FONT" FontSize="18" Foreground="{StaticResource StudioAccent}" Margin="0,12,0,4" />
+                    <TextBlock Text="Font family installed on the system" />
+                    <ComboBox x:Name="FontBox" IsEditable="True" SelectionChanged="Any_Changed" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="ATTACH A .ttf" Click="PickFont_Click" />
+                        <Button Content="REMOVE" Click="ClearFont_Click" />
+                    </StackPanel>
+                    <TextBlock x:Name="FontFileText" Text="no attached font file" />
+
+                    <TextBlock Text="BACKGROUND" FontSize="18" Foreground="{StaticResource StudioAccent}" Margin="0,12,0,4" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="PICK AN IMAGE" Click="PickBg_Click" />
+                        <Button Content="REMOVE" Click="ClearBg_Click" />
+                    </StackPanel>
+                    <TextBlock x:Name="BgFileText" Text="no background image" />
+                    <TextBlock x:Name="BgOpacityText" Text="Opacity: 35%" />
+                    <Slider x:Name="BgOpacity" Minimum="0" Maximum="100" Value="35" ValueChanged="Any_Changed" />
+                    <TextBlock Text="Stretch mode" />
+                    <ComboBox x:Name="StretchBox" SelectionChanged="Any_Changed">
+                        <ComboBoxItem Content="UniformToFill" />
+                        <ComboBoxItem Content="Uniform" />
+                        <ComboBoxItem Content="Fill" />
+                        <ComboBoxItem Content="None" />
+                    </ComboBox>
+
+                    <TextBlock Text="LOGO" FontSize="18" Foreground="{StaticResource StudioAccent}" Margin="0,12,0,4" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="PICK A LOGO" Click="PickLogo_Click" />
+                        <Button Content="REMOVE" Click="ClearLogo_Click" />
+                    </StackPanel>
+                    <TextBlock x:Name="LogoFileText" Text="no logo, the client will show the default one" />
+
+                    <TextBlock Text="MUSIC" FontSize="18" Foreground="{StaticResource StudioAccent}" Margin="0,12,0,4" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="PICK AN .mp3 / .wav" Click="PickMusic_Click" />
+                        <Button Content="PLAY" Click="PlayMusic_Click" />
+                        <Button Content="STOP" Click="StopMusic_Click" />
+                        <Button Content="REMOVE" Click="ClearMusic_Click" />
+                    </StackPanel>
+                    <TextBlock x:Name="MusicFileText" Text="no music" />
+                    <TextBlock x:Name="MusicVolumeText" Text="Volume: 40%" />
+                    <Slider x:Name="MusicVolume" Minimum="0" Maximum="100" Value="40" ValueChanged="Volume_Changed" />
+                    <CheckBox x:Name="LoopCheck" Content="Loop the track" IsChecked="True" Click="Any_Changed" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- live preview: a small copy of the real client -->
+            <Border Grid.Column="1" Margin="0,10,10,10" BorderBrush="{StaticResource StudioBorder}" BorderThickness="2">
+                <Grid x:Name="PreviewRoot">
+                    <Rectangle x:Name="PreviewBgImage" />
+                    <Viewbox Stretch="Uniform" Margin="14">
+                        <Grid Width="640" Height="420">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Border x:Name="PvTopBar" Grid.Row="0" BorderThickness="0,0,0,3" Padding="10,8">
+                                <StackPanel Orientation="Horizontal">
+                                    <Image x:Name="PvLogoImage" Height="26" Margin="0,0,10,0" Visibility="Collapsed" />
+                                    <TextBlock x:Name="PvLogo" Text="DELTA.DOTNET" FontSize="22" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                            <StackPanel Grid.Row="1" Margin="14">
+                                <TextBlock x:Name="PvTitle" Text="* LOBBIES" FontSize="24" />
+                                <Border x:Name="PvBox" BorderThickness="3" Padding="12" Margin="0,8,0,8">
+                                    <StackPanel>
+                                        <TextBlock x:Name="PvText" Text="Kris, get up. The lobby is open." FontSize="16" />
+                                        <TextBlock x:Name="PvMuted" Text="3/4 players - open - host: s4msepi0l" FontSize="13" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                            <Border x:Name="PvButton" BorderThickness="3" Padding="12,6" Margin="0,0,8,0">
+                                                <TextBlock x:Name="PvButtonText" Text="JOIN" FontSize="15" />
+                                            </Border>
+                                            <Border x:Name="PvDanger" BorderThickness="3" Padding="12,6">
+                                                <TextBlock x:Name="PvDangerText" Text="CLOSE THE LOBBY" FontSize="15" />
+                                            </Border>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock x:Name="PvSuccess" Text="* connected" FontSize="14" />
+                            </StackPanel>
+                        </Grid>
+                    </Viewbox>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="2" Background="{StaticResource StudioPanel}" BorderBrush="{StaticResource StudioBorder}"
+                BorderThickness="0,2,0,0" Padding="10,4">
+            <TextBlock x:Name="StatusText" Text="ready" Margin="0" />
+        </Border>
+    </Grid>
+</Window>

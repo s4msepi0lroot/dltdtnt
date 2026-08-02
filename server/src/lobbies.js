@@ -1,155 +1,102 @@
-// DeltaDotNet - in-memory lobby registry (open/closed lobbies, slots, kick/ban)
-import crypto from 'node:crypto'
+'use strict';
+// DeltaDotNet - in-memory lobby registry.
+const crypto = require('crypto');
+const db = require('./db');
 
 /**
  * Lobby shape:
  * {
- *   id, name, hostId, hostName,
- *   visibility: 'open' | 'closed',
- *   accessMode: 'none' | 'password' | 'whitelist',
- *   passwordHash, whitelist: [usernameLower],
- *   maxPlayers: 2..4,
- *   state: 'lobby' | 'playing',
- *   members: Map(userId -> { user, slot, ready, connected }),
- *   bans: Map(userId -> { username, reason, at }),
- *   quality: { fps, scale, jpegQuality },
- *   createdAt
+ *   id, name, hostLogin, visibility: 'open'|'closed',
+ *   password: string|null,          // for closed lobbies (password mode)
+ *   allowList: string[],            // for closed lobbies (login whitelist mode)
+ *   maxPlayers: number,             // 2..8
+ *   state: 'waiting'|'playing',
+ *   createdAt, bans: {login: {reason, at}},
+ *   members: Map<loginLower, member>
  * }
+ * member = { login, display, slot, isHost, connId, ready }
  */
-const lobbies = new Map()
 
-function hash (text) {
-  return crypto.createHash('sha256').update(String(text)).digest('hex')
+const lobbies = new Map();
+
+function newId() {
+  return crypto.randomBytes(4).toString('hex').toUpperCase();
 }
 
-export function createLobby (host, opts = {}) {
-  const id = crypto.randomBytes(3).toString('hex').toUpperCase() // short join code
-  const maxPlayers = Math.min(4, Math.max(2, Number(opts.maxPlayers) || 2))
-  const visibility = opts.visibility === 'closed' ? 'closed' : 'open'
-  let accessMode = opts.accessMode || 'none'
-  if (visibility === 'open') accessMode = 'none'
-  if (!['none', 'password', 'whitelist'].includes(accessMode)) accessMode = 'none'
+function create(host, opts) {
+  const s = db.get();
+  if (lobbies.size >= (s.settings.maxLobbies || 200)) {
+    throw new Error('Server lobby limit reached');
+  }
+  const hardCap = s.settings.maxPlayersHardCap || 8;
+  let maxPlayers = parseInt(opts.maxPlayers, 10);
+  if (!Number.isFinite(maxPlayers)) maxPlayers = 2;
+  maxPlayers = Math.min(hardCap, Math.max(2, maxPlayers));
 
+  const visibility = opts.visibility === 'closed' ? 'closed' : 'open';
+  const id = newId();
   const lobby = {
     id,
-    name: (opts.name || `${host.username}'s lobby`).slice(0, 40),
-    hostId: host.id,
-    hostName: host.username,
+    name: (opts.name || (host.display + "'s lobby")).slice(0, 40),
+    hostLogin: host.login,
     visibility,
-    accessMode,
-    passwordHash: accessMode === 'password' && opts.password ? hash(opts.password) : null,
-    whitelist: Array.isArray(opts.whitelist)
-      ? opts.whitelist.map(u => String(u).toLowerCase()).slice(0, 32)
-      : [],
+    password: visibility === 'closed' && opts.password ? String(opts.password) : null,
+    allowList: Array.isArray(opts.allowList) ? opts.allowList.map(x => String(x).toLowerCase()).slice(0, 32) : [],
     maxPlayers,
-    state: 'lobby',
-    members: new Map(),
-    bans: new Map(),
-    quality: {
-      fps: clamp(opts.quality?.fps, 5, 60, 30),
-      scale: clamp(opts.quality?.scale, 25, 100, 75),
-      jpegQuality: clamp(opts.quality?.jpegQuality, 20, 95, 60)
-    },
-    createdAt: Date.now()
-  }
-  lobbies.set(id, lobby)
-  return lobby
+    state: 'waiting',
+    createdAt: Date.now(),
+    bans: {},
+    members: new Map()
+  };
+  lobbies.set(id, lobby);
+  return lobby;
 }
 
-function clamp (value, min, max, fallback) {
-  const n = Number(value)
-  if (!Number.isFinite(n)) return fallback
-  return Math.min(max, Math.max(min, Math.round(n)))
+function get(id) { return lobbies.get(String(id || '').toUpperCase()); }
+function remove(id) { return lobbies.delete(String(id || '').toUpperCase()); }
+function all() { return Array.from(lobbies.values()); }
+
+function freeSlot(lobby) {
+  const used = new Set(Array.from(lobby.members.values()).map(m => m.slot));
+  for (let i = 1; i <= lobby.maxPlayers; i++) if (!used.has(i)) return i;
+  return null;
 }
 
-export function getLobby (id) {
-  return lobbies.get(String(id || '').toUpperCase()) || null
-}
-
-export function deleteLobby (id) {
-  return lobbies.delete(String(id || '').toUpperCase())
-}
-
-export function allLobbies () {
-  return [...lobbies.values()]
-}
-
-export function listPublicLobbies () {
-  return allLobbies().map(summary)
-}
-
-export function summary (lobby) {
+function publicLobby(lobby) {
   return {
     id: lobby.id,
     name: lobby.name,
-    hostName: lobby.hostName,
+    host: lobby.hostLogin,
     visibility: lobby.visibility,
-    accessMode: lobby.accessMode,
-    maxPlayers: lobby.maxPlayers,
+    locked: lobby.visibility === 'closed',
+    hasPassword: !!lobby.password,
+    whitelisted: lobby.allowList.length > 0,
     players: lobby.members.size,
+    maxPlayers: lobby.maxPlayers,
     state: lobby.state,
     createdAt: lobby.createdAt
-  }
+  };
 }
 
-export function detail (lobby) {
-  return {
-    ...summary(lobby),
-    hostId: lobby.hostId,
-    quality: lobby.quality,
-    whitelist: lobby.whitelist,
-    members: [...lobby.members.values()].map(m => ({
-      id: m.user.id,
-      username: m.user.username,
-      rainbow: !!m.user.rainbow,
-      nameColor: m.user.nameColor || null,
-      badge: m.user.badge || null,
-      slot: m.slot,
-      ready: !!m.ready,
-      isHost: m.user.id === lobby.hostId
-    })),
-    bans: [...lobby.bans.entries()].map(([id, b]) => ({ id, ...b }))
-  }
+function fullLobby(lobby, usersDb) {
+  return Object.assign(publicLobby(lobby), {
+    bans: Object.keys(lobby.bans),
+    allowList: lobby.allowList,
+    members: Array.from(lobby.members.values()).map(m => {
+      const u = usersDb ? usersDb[m.login.toLowerCase()] : null;
+      return {
+        login: m.login,
+        display: m.display,
+        slot: m.slot,
+        isHost: m.isHost,
+        ready: !!m.ready,
+        rainbow: u ? !!u.rainbow : false,
+        nameColor: u ? (u.nameColor || null) : null,
+        badge: u ? (u.badge || null) : null,
+        rank: u ? u.rank : 'player'
+      };
+    }).sort((a, b) => a.slot - b.slot)
+  });
 }
 
-export function canJoin (lobby, user, password) {
-  if (!lobby) return 'Lobby not found'
-  if (lobby.bans.has(user.id)) return 'You are banned from this lobby'
-  if (lobby.members.has(user.id)) return null // rejoin allowed
-  if (lobby.members.size >= lobby.maxPlayers) return 'Lobby is full'
-  if (lobby.state === 'playing') return 'Game already started'
-  if (lobby.visibility === 'closed') {
-    if (lobby.accessMode === 'password') {
-      if (!password || hash(password) !== lobby.passwordHash) return 'Wrong lobby password'
-    } else if (lobby.accessMode === 'whitelist') {
-      if (!lobby.whitelist.includes(user.username.toLowerCase())) {
-        return 'Your login is not on the allow list'
-      }
-    }
-  }
-  return null
-}
-
-export function addMember (lobby, user) {
-  const existing = lobby.members.get(user.id)
-  if (existing) { existing.connected = true; return existing }
-  const used = new Set([...lobby.members.values()].map(m => m.slot))
-  let slot = 0
-  while (used.has(slot)) slot++
-  const member = { user, slot, ready: false, connected: true }
-  lobby.members.set(user.id, member)
-  return member
-}
-
-export function removeMember (lobby, userId) {
-  lobby.members.delete(userId)
-}
-
-export function banMember (lobby, userId, username, reason) {
-  lobby.bans.set(userId, { username, reason: reason || 'No reason given', at: Date.now() })
-  lobby.members.delete(userId)
-}
-
-export function unbanMember (lobby, userId) {
-  lobby.bans.delete(userId)
-}
+module.exports = { create, get, remove, all, freeSlot, publicLobby, fullLobby, lobbies, newId };
