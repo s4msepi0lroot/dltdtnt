@@ -166,7 +166,7 @@ namespace DeltaDotNet.Client.Views
             {
                 var tools = new StackPanel { Orientation = Orientation.Horizontal };
                 var kick = new Button { Content = "KICK", Style = (Style)FindResource("DdnButton") };
-                kick.Click += (s, e) => Session.Net.SendAsync(new { t = "lobby.kick", login = member.Login, reason = "kicked by the host" });
+                kick.Click += (s, e) => { _ = Session.Net.SendAsync(new { t = "lobby.kick", login = member.Login, reason = "kicked by the host" }); };
                 var ban = new Button { Content = "BAN", Style = (Style)FindResource("DdnDangerButton") };
                 ban.Click += (s, e) =>
                 {

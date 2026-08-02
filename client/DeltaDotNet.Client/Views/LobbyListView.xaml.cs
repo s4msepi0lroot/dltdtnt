@@ -134,13 +134,13 @@ namespace DeltaDotNet.Client.Views
         private void Vis_Changed(object sender, SelectionChangedEventArgs e)
         {
             if (ClosedPanel == null) return;
-            ClosedPanel.Visibility = Tag(VisBox) == "closed" ? Visibility.Visible : Visibility.Collapsed;
+            ClosedPanel.Visibility = TagOf(VisBox) == "closed" ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void Create_Click(object sender, RoutedEventArgs e)
         {
             int max = 2;
-            int.TryParse(Tag(PlayersBox), out max);
+            int.TryParse(TagOf(PlayersBox), out max);
             var allow = new System.Collections.Generic.List<string>();
             if (AllowBox != null && !string.IsNullOrWhiteSpace(AllowBox.Text))
                 foreach (var part in AllowBox.Text.Split(','))
@@ -151,13 +151,13 @@ namespace DeltaDotNet.Client.Views
                 t = "lobby.create",
                 name = NameBox.Text.Trim(),
                 maxPlayers = max,
-                visibility = Tag(VisBox),
+                visibility = TagOf(VisBox),
                 password = PassBox == null ? "" : PassBox.Text,
                 allowList = allow
             });
         }
 
-        private static string Tag(ComboBox box)
+        private static string TagOf(ComboBox box)
         {
             var item = box.SelectedItem as ComboBoxItem;
             return item == null ? "" : Convert.ToString(item.Tag);

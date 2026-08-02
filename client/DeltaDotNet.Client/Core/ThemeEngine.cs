@@ -203,7 +203,9 @@ namespace DeltaDotNet.Client.Core
             {
                 Source = new Uri("pack://application:,,,/DeltaDotNet;component/Themes/Deltarune.xaml", UriKind.Absolute)
             };
-            foreach (var key in new List<object>(dict.Keys))
+            var keys = new List<object>();
+            foreach (object k in dict.Keys) keys.Add(k);
+            foreach (var key in keys)
             {
                 Application.Current.Resources[key] = dict[key];
             }
