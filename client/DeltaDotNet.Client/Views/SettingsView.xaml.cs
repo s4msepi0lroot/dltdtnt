@@ -39,31 +39,94 @@ namespace DeltaDotNet.Client.Views
             RegHBox.Text = q.RegionH.ToString();
 
             for (int i = 1; i <= 8; i++)
-                SlotBox.Items.Add(new ComboBoxItem { Content = "Player slot " + i, Tag = i.ToString() });
+                SlotBox.Items.Add(new ComboBoxItem { Content = Lang.F("set.slot", i), Tag = i.ToString() });
             SlotBox.SelectedIndex = 0;
+
+            // language selector (English first, saved choice preselected)
+            foreach (var l in Lang.Available)
+                LanguageBox.Items.Add(new ComboBoxItem { Content = l.Title, Tag = l.Code });
+            SelectTag(LanguageBox, Lang.Current);
 
             VolumeSlider.Value = AppConfig.Current.MusicVolume * 100;
             MusicCheck.IsChecked = AppConfig.Current.MusicEnabled;
             ScaleUiCheck.IsChecked = AppConfig.Current.ScaleUiToWindow;
 
-            AccountInfo.Text = "You are signed in as " + Session.Display +
-                               "   rank: " + Session.Rank +
-                               (Session.IsAdmin ? "   (administrator)" : "");
-
             _loading = false;
+            ApplyLang();
+            Lang.Changed += ApplyLang;
+            Unloaded += (s, e) => { Lang.Changed -= ApplyLang; };
+
             RefreshLabels();
             BuildMyBinds();
             BuildSlotBinds();
             RefreshThemeInfo();
         }
 
+        // ------------------------------------------------------------ language
+        private void Language_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (_loading) return;
+            var code = TagOf(LanguageBox);
+            if (string.IsNullOrEmpty(code) || code == Lang.Current) return;
+            Lang.Current = code;                       // fires Lang.Changed -> every open view re-localizes
+            AppConfig.Current.Language = code;
+            AppConfig.Save();
+            MainWindow.Instance.ApplyLang();
+        }
+
+        /// <summary>Localizes every static caption on the settings screen.</summary>
+        private void ApplyLang()
+        {
+            TabQuality.Header = Lang.T("set.tabQuality");
+            TabMyKeys.Header = Lang.T("set.tabMyKeys");
+            TabModKeys.Header = Lang.T("set.tabModKeys");
+            TabThemes.Header = Lang.T("set.tabTheme");
+            TabAccount.Header = Lang.T("set.tabAccount");
+
+            QualityTitle.Text = Lang.T("set.quality.title");
+            PresetLabel.Text = Lang.T("set.preset");
+            CursorCheck.Content = Lang.T("set.drawCursor");
+            SkipCheck.Content = Lang.T("set.skipIdentical");
+            StatsCheck.Content = Lang.T("set.showStats");
+            FocusCheck.Content = Lang.T("set.focusGame");
+            CaptureTitle.Text = Lang.T("set.capture.title");
+            ModeWindowItem.Content = Lang.T("set.capWindow");
+            ModeScreenItem.Content = Lang.T("set.capScreen");
+            ModeRegionItem.Content = Lang.T("set.capRegion");
+            PickWindowBtn.Content = Lang.T("set.pickWindow");
+            TestCaptureBtn.Content = Lang.T("set.testCapture");
+
+            MyKeysTitle.Text = Lang.T("set.myKeys.title");
+            MyKeysNote.Text = Lang.T("set.myKeys.note");
+            ResetMyBindsBtn.Content = Lang.T("set.resetDefaults");
+
+            ModKeysTitle.Text = Lang.T("set.modKeys.title");
+            ResetSlotsBtn.Content = Lang.T("set.resetDefaults");
+
+            LanguageLabel.Text = Lang.T("set.language");
+            ThemeTitle.Text = Lang.T("set.theme.title");
+            LoadThemeBtn.Content = Lang.T("set.theme.load");
+            ResetThemeBtn.Content = Lang.T("set.theme.reset");
+            MusicCheck.Content = Lang.T("set.music.enabled");
+            ScaleUiCheck.Content = Lang.T("set.scaleUi");
+
+            AccountTitle.Text = Lang.T("set.account.title");
+            OldPassLabel.Text = Lang.T("login.password");
+            NewPassLabel.Text = Lang.T("login.password");
+            ChangePassBtn.Content = Lang.T("common.save");
+            AccountInfo.Text = Lang.F("set.account.info", Session.Display, Session.Rank) +
+                               (Session.IsAdmin ? "  " + Lang.T("set.account.admin") : "");
+
+            RefreshLabels();
+        }
+
         // ------------------------------------------------------------ quality
         private void RefreshLabels()
         {
-            FpsLabel.Text = "Frames per second: " + (int)FpsSlider.Value;
-            ScaleLabel.Text = "Resolution scale: " + (int)ScaleSlider.Value + "%";
-            JpegLabel.Text = "JPEG quality: " + (int)JpegSlider.Value;
-            VolumeLabel.Text = "Music volume: " + (int)VolumeSlider.Value + "%";
+            FpsLabel.Text = Lang.F("set.fps", (int)FpsSlider.Value);
+            ScaleLabel.Text = Lang.F("set.scale", (int)ScaleSlider.Value);
+            JpegLabel.Text = Lang.F("set.jpeg", (int)JpegSlider.Value);
+            VolumeLabel.Text = Lang.F("set.music.volume", (int)VolumeSlider.Value);
             RegionPanel.Visibility = TagOf(ModeBox) == "Region" ? Visibility.Visible : Visibility.Collapsed;
             TitleBox.Visibility = TagOf(ModeBox) == "Window" ? Visibility.Visible : Visibility.Collapsed;
         }

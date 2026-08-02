@@ -5,13 +5,13 @@
         <TabControl Background="Transparent" BorderThickness="0">
 
             <!-- ================= QUALITY ================= -->
-            <TabItem Header="QUALITY">
+            <TabItem x:Name="TabQuality" Header="QUALITY">
                 <Border Style="{DynamicResource DdnBox}" Margin="0,8,0,0">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel>
-                            <TextBlock Text="* STREAM QUALITY (host only)" Style="{DynamicResource DdnTitle}" />
+                            <TextBlock x:Name="QualityTitle" Text="* STREAM QUALITY (host only)" Style="{DynamicResource DdnTitle}" />
 
-                            <TextBlock Text="Preset" Style="{DynamicResource DdnMuted}" />
+                            <TextBlock x:Name="PresetLabel" Text="Preset" Style="{DynamicResource DdnMuted}" />
                             <ComboBox x:Name="PresetBox" Style="{DynamicResource DdnCombo}" Width="300" HorizontalAlignment="Left"
                                       SelectionChanged="Preset_Changed">
                                 <ComboBoxItem Content="Potato - 10 fps / 40% / q35" Tag="Potato" />
@@ -43,17 +43,17 @@
                             <CheckBox x:Name="FocusCheck" Content="Focus the game window when the session starts"
                                       Style="{DynamicResource DdnCheck}" Click="Quality_Changed" />
 
-                            <TextBlock Text="* WHAT TO CAPTURE" Style="{DynamicResource DdnTitle}" FontSize="20" Margin="0,14,0,6" />
+                            <TextBlock x:Name="CaptureTitle" Text="* WHAT TO CAPTURE" Style="{DynamicResource DdnTitle}" FontSize="20" Margin="0,14,0,6" />
                             <ComboBox x:Name="ModeBox" Style="{DynamicResource DdnCombo}" Width="300" HorizontalAlignment="Left"
                                       SelectionChanged="Quality_Changed">
-                                <ComboBoxItem Content="Game window (by title)" Tag="Window" />
-                                <ComboBoxItem Content="Whole screen" Tag="Screen" />
-                                <ComboBoxItem Content="Screen region" Tag="Region" />
+                                <ComboBoxItem x:Name="ModeWindowItem" Content="Game window (by title)" Tag="Window" />
+                                <ComboBoxItem x:Name="ModeScreenItem" Content="Whole screen" Tag="Screen" />
+                                <ComboBoxItem x:Name="ModeRegionItem" Content="Screen region" Tag="Region" />
                             </ComboBox>
 
                             <StackPanel Orientation="Horizontal">
                                 <TextBox x:Name="TitleBox" Style="{DynamicResource DdnInput}" Width="320" TextChanged="Quality_Changed" />
-                                <Button Content="PICK A WINDOW" Style="{DynamicResource DdnButton}" Click="PickWindow_Click" Margin="8,0,0,8" />
+                                <Button x:Name="PickWindowBtn" Content="PICK A WINDOW" Style="{DynamicResource DdnButton}" Click="PickWindow_Click" Margin="8,0,0,8" />
                             </StackPanel>
 
                             <StackPanel x:Name="RegionPanel" Orientation="Horizontal" Visibility="Collapsed">
@@ -67,7 +67,7 @@
                                 <TextBox x:Name="RegHBox" Style="{DynamicResource DdnInput}" Width="80" Margin="0,0,8,8" TextChanged="Quality_Changed" />
                             </StackPanel>
 
-                            <Button Content="TEST THE CAPTURE" Style="{DynamicResource DdnButton}" Click="TestCapture_Click" HorizontalAlignment="Left" />
+                            <Button x:Name="TestCaptureBtn" Content="TEST THE CAPTURE" Style="{DynamicResource DdnButton}" Click="TestCapture_Click" HorizontalAlignment="Left" />
                             <Image x:Name="PreviewImage" Height="180" HorizontalAlignment="Left" Margin="0,8,0,0" Stretch="Uniform" />
                         </StackPanel>
                     </ScrollViewer>
@@ -75,49 +75,53 @@
             </TabItem>
 
             <!-- ================= MY KEYS ================= -->
-            <TabItem Header="MY KEYS">
+            <TabItem x:Name="TabMyKeys" Header="MY KEYS">
                 <Border Style="{DynamicResource DdnBox}" Margin="0,8,0,0">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel>
-                            <TextBlock Text="* YOUR OWN KEYBOARD" Style="{DynamicResource DdnTitle}" />
-                            <TextBlock TextWrapping="Wrap" Style="{DynamicResource DdnMuted}"
-                                       Text="These are the keys YOU press on YOUR keyboard. They are translated into actions and the host converts them into the keys the mod expects for your player slot - so every player can use whatever layout they like." />
+                            <TextBlock x:Name="MyKeysTitle" Text="* YOUR OWN KEYBOARD" Style="{DynamicResource DdnTitle}" />
+                            <TextBlock x:Name="MyKeysNote" TextWrapping="Wrap" Style="{DynamicResource DdnMuted}"
+                                       Text="These are the keys YOU press on YOUR keyboard." />
                             <StackPanel x:Name="MyBindsPanel" Margin="0,10,0,0" />
-                            <Button Content="RESET TO DEFAULTS" Style="{DynamicResource DdnButton}" Click="ResetMyBinds_Click" HorizontalAlignment="Left" />
+                            <Button x:Name="ResetMyBindsBtn" Content="RESET TO DEFAULTS" Style="{DynamicResource DdnButton}" Click="ResetMyBinds_Click" HorizontalAlignment="Left" />
                         </StackPanel>
                     </ScrollViewer>
                 </Border>
             </TabItem>
 
             <!-- ================= MOD KEYS ================= -->
-            <TabItem Header="MOD KEYS">
+            <TabItem x:Name="TabModKeys" Header="MOD KEYS">
                 <Border Style="{DynamicResource DdnBox}" Margin="0,8,0,0">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel>
-                            <TextBlock Text="* KEYS THE MOD LISTENS TO" Style="{DynamicResource DdnTitle}" />
-                            <TextBlock TextWrapping="Wrap" Style="{DynamicResource DdnMuted}"
+                            <TextBlock x:Name="ModKeysTitle" Text="* KEYS THE MOD LISTENS TO" Style="{DynamicResource DdnTitle}" />
+                            <TextBlock x:Name="ModKeysNote" TextWrapping="Wrap" Style="{DynamicResource DdnMuted}"
                                        Text="Only the host uses this table. Slot 1 = WASD/Z/X/P/C/Ctrl/Shift, slot 2 = arrows/Enter/Ctrl/Shift/C by default. Fill slots 3-8 only if your build of the mod supports more local players." />
                             <ComboBox x:Name="SlotBox" Style="{DynamicResource DdnCombo}" Width="200" HorizontalAlignment="Left"
                                       Margin="0,10,0,8" SelectionChanged="Slot_Changed" />
                             <StackPanel x:Name="SlotBindsPanel" />
-                            <Button Content="RESET ALL SLOTS" Style="{DynamicResource DdnButton}" Click="ResetSlots_Click" HorizontalAlignment="Left" />
+                            <Button x:Name="ResetSlotsBtn" Content="RESET ALL SLOTS" Style="{DynamicResource DdnButton}" Click="ResetSlots_Click" HorizontalAlignment="Left" />
                         </StackPanel>
                     </ScrollViewer>
                 </Border>
             </TabItem>
 
-            <!-- ================= THEMES ================= -->
-            <TabItem Header="THEMES">
+            <!-- ================= THEME & LANGUAGE ================= -->
+            <TabItem x:Name="TabThemes" Header="THEME">
                 <Border Style="{DynamicResource DdnBox}" Margin="0,8,0,0">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel>
-                            <TextBlock Text="* APPEARANCE" Style="{DynamicResource DdnTitle}" />
+                            <TextBlock x:Name="LanguageLabel" Text="Language / Язык" Style="{DynamicResource DdnMuted}" />
+                            <ComboBox x:Name="LanguageBox" Style="{DynamicResource DdnCombo}" Width="260" HorizontalAlignment="Left"
+                                      Margin="0,0,0,14" SelectionChanged="Language_Changed" />
+
+                            <TextBlock x:Name="ThemeTitle" Text="* APPEARANCE" Style="{DynamicResource DdnTitle}" />
                             <TextBlock x:Name="ThemeInfo" Style="{DynamicResource DdnText}" TextWrapping="Wrap" Margin="0,0,0,10" />
 
                             <WrapPanel>
-                                <Button Content="LOAD A .ddntheme" Style="{DynamicResource DdnButton}" Click="LoadTheme_Click" />
-                                <Button Content="INSTALLED THEMES FOLDER" Style="{DynamicResource DdnButton}" Click="OpenThemes_Click" />
-                                <Button Content="DEFAULT THEME" Style="{DynamicResource DdnButton}" Click="ResetTheme_Click" />
+                                <Button x:Name="LoadThemeBtn" Content="LOAD A .ddntheme" Style="{DynamicResource DdnButton}" Click="LoadTheme_Click" />
+                                <Button x:Name="OpenThemesBtn" Content="INSTALLED THEMES FOLDER" Style="{DynamicResource DdnButton}" Click="OpenThemes_Click" />
+                                <Button x:Name="ResetThemeBtn" Content="DEFAULT THEME" Style="{DynamicResource DdnButton}" Click="ResetTheme_Click" />
                             </WrapPanel>
 
                             <TextBlock x:Name="VolumeLabel" Style="{DynamicResource DdnText}" Margin="0,12,0,0" />
@@ -132,16 +136,16 @@
             </TabItem>
 
             <!-- ================= ACCOUNT ================= -->
-            <TabItem Header="ACCOUNT">
+            <TabItem x:Name="TabAccount" Header="ACCOUNT">
                 <Border Style="{DynamicResource DdnBox}" Margin="0,8,0,0">
                     <StackPanel>
-                        <TextBlock Text="* ACCOUNT" Style="{DynamicResource DdnTitle}" />
+                        <TextBlock x:Name="AccountTitle" Text="* ACCOUNT" Style="{DynamicResource DdnTitle}" />
                         <TextBlock x:Name="AccountInfo" Style="{DynamicResource DdnText}" TextWrapping="Wrap" Margin="0,0,0,10" />
-                        <TextBlock Text="Current password" Style="{DynamicResource DdnMuted}" />
+                        <TextBlock x:Name="OldPassLabel" Text="Current password" Style="{DynamicResource DdnMuted}" />
                         <PasswordBox x:Name="OldPass" Style="{DynamicResource DdnPassword}" Width="320" HorizontalAlignment="Left" />
-                        <TextBlock Text="New password" Style="{DynamicResource DdnMuted}" />
+                        <TextBlock x:Name="NewPassLabel" Text="New password" Style="{DynamicResource DdnMuted}" />
                         <PasswordBox x:Name="NewPass" Style="{DynamicResource DdnPassword}" Width="320" HorizontalAlignment="Left" />
-                        <Button Content="CHANGE THE PASSWORD" Style="{DynamicResource DdnButton}" Click="ChangePass_Click" HorizontalAlignment="Left" />
+                        <Button x:Name="ChangePassBtn" Content="CHANGE THE PASSWORD" Style="{DynamicResource DdnButton}" Click="ChangePass_Click" HorizontalAlignment="Left" />
                         <TextBlock x:Name="AccountStatus" Style="{DynamicResource DdnMuted}" Margin="0,8,0,0" />
                     </StackPanel>
                 </Border>

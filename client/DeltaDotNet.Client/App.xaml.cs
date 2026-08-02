@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Threading;
 using DeltaDotNet.Client.Core;
 
@@ -24,11 +26,48 @@ namespace DeltaDotNet.Client
 
             AppConfig.Load();
 
+            // language: English by default, saved choice otherwise
+            Lang.Current = AppConfig.Current.Language;
+
+            // pixel font: drop any .ttf/.otf into Assets\Fonts and it becomes the UI font
+            LoadPixelFont();
+
             if (!string.IsNullOrWhiteSpace(AppConfig.Current.ThemePath) && File.Exists(AppConfig.Current.ThemePath))
             {
                 try { ThemeEngine.Apply(AppConfig.Current.ThemePath); }
                 catch (Exception ex) { LogCrash(ex); }
             }
+        }
+
+        /// <summary>
+        /// Looks for a font file in Assets\Fonts and, if found, makes it the
+        /// default UI font (the DdnFont resource). Deltarune-style pixel fonts
+        /// such as "Determination Mono" or "8bit Operator" work great here.
+        /// The app still runs fine with the monospace fallback if none is present.
+        /// </summary>
+        private void LoadPixelFont()
+        {
+            try
+            {
+                var dir = Path.Combine(AppContext.BaseDirectory, "Assets", "Fonts");
+                if (!Directory.Exists(dir)) return;
+
+                bool hasFontFile = false;
+                foreach (var f in Directory.GetFiles(dir))
+                {
+                    var ext = Path.GetExtension(f).ToLowerInvariant();
+                    if (ext == ".ttf" || ext == ".otf") { hasFontFile = true; break; }
+                }
+                if (!hasFontFile) return;
+
+                // Enumerate the families that actually live in that folder and use the first.
+                var families = new List<FontFamily>(Fonts.GetFontFamilies(dir + Path.DirectorySeparatorChar));
+                if (families.Count > 0)
+                {
+                    Resources["DdnFont"] = families[0];
+                }
+            }
+            catch (Exception ex) { LogCrash(ex); }
         }
 
         private void OnUnhandled(object sender, DispatcherUnhandledExceptionEventArgs e)

@@ -42,7 +42,7 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Text="* CHAT" Style="{DynamicResource DdnTitle}" />
+                <TextBlock x:Name="ChatTitle" Grid.Row="0" Text="* CHAT" Style="{DynamicResource DdnTitle}" />
 
                 <ScrollViewer Grid.Row="1" x:Name="ChatScroll" VerticalScrollBarVisibility="Auto">
                     <StackPanel x:Name="ChatPanel" />
@@ -54,16 +54,16 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBox x:Name="ChatBox" Grid.Column="0" Style="{DynamicResource DdnInput}" KeyDown="ChatBox_KeyDown" />
-                    <Button Grid.Column="1" Content="SEND" Style="{DynamicResource DdnButton}" Click="Send_Click" Margin="8,0,0,8" />
+                    <Button x:Name="SendBtn" Grid.Column="1" Content="SEND" Style="{DynamicResource DdnButton}" Click="Send_Click" Margin="8,0,0,8" />
                 </Grid>
 
                 <StackPanel Grid.Row="3" x:Name="HostPanel">
-                    <TextBlock Text="* HOST TOOLS" Style="{DynamicResource DdnTitle}" FontSize="20" />
+                    <TextBlock x:Name="HostToolsTitle" Text="* HOST TOOLS" Style="{DynamicResource DdnTitle}" FontSize="20" />
                     <WrapPanel>
-                        <Button Content="RENAME" Style="{DynamicResource DdnButton}" Click="Rename_Click" />
-                        <Button Content="ACCESS" Style="{DynamicResource DdnButton}" Click="Access_Click" />
-                        <Button Content="SLOTS" Style="{DynamicResource DdnButton}" Click="Slots_Click" />
-                        <Button Content="UNBAN" Style="{DynamicResource DdnButton}" Click="Unban_Click" />
+                        <Button x:Name="RenameBtn" Content="RENAME" Style="{DynamicResource DdnButton}" Click="Rename_Click" />
+                        <Button x:Name="AccessBtn" Content="ACCESS" Style="{DynamicResource DdnButton}" Click="Access_Click" />
+                        <Button x:Name="SlotsBtn" Content="SLOTS" Style="{DynamicResource DdnButton}" Click="Slots_Click" />
+                        <Button x:Name="UnbanBtn" Content="UNBAN" Style="{DynamicResource DdnButton}" Click="Unban_Click" />
                     </WrapPanel>
                 </StackPanel>
             </Grid>

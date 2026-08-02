@@ -33,6 +33,18 @@ namespace DeltaDotNet.Client
 
             ShowLoggedOutChrome();
             Navigate(new LoginView());
+
+            ApplyLang();
+            Lang.Changed += ApplyLang;
+        }
+
+        /// <summary>Localizes the top navigation. Called again whenever the language changes.</summary>
+        public void ApplyLang()
+        {
+            NavLobbies.Content = Lang.T("nav.lobbies");
+            NavSettings.Content = Lang.T("nav.settings");
+            NavAdmin.Content = Lang.T("nav.admin");
+            NavLogout.Content = Lang.T("nav.exit");
         }
 
         // ------------------------------------------------------------ branding

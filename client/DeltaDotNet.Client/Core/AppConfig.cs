@@ -62,7 +62,7 @@ namespace DeltaDotNet.Client.Core
     /// <summary>Everything that is persisted between runs.</summary>
     public class ConfigData
     {
-        public string ServerUrl { get; set; } = "http://localhost:8080";
+        public string ServerUrl { get; set; } = "http://127.0.0.1:8080";
         public string Login { get; set; } = "";
         public string Token { get; set; } = "";
         public bool RememberMe { get; set; } = true;
@@ -88,6 +88,9 @@ namespace DeltaDotNet.Client.Core
         public double WindowHeight { get; set; } = 760;
         public bool ShowStreamStats { get; set; } = true;
         public bool FocusGameOnStart { get; set; } = true;
+
+        /// <summary>UI language code: "en" (default) or "ru".</summary>
+        public string Language { get; set; } = "en";
     }
 
     /// <summary>Loads/saves <see cref="ConfigData"/> from %AppData%\DeltaDotNet\config.json.</summary>

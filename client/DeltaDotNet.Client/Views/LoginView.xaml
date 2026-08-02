@@ -4,12 +4,13 @@
     <Grid>
         <Border Style="{DynamicResource DdnBox}" Width="560" HorizontalAlignment="Center" VerticalAlignment="Center">
             <StackPanel>
-                <TextBlock Text="* SIGN IN" Style="{DynamicResource DdnTitle}" />
-                <TextBlock Text="Server address" Style="{DynamicResource DdnMuted}" />
+                <TextBlock x:Name="TitleLabel" Text="* SIGN IN" Style="{DynamicResource DdnTitle}" />
+                <TextBlock x:Name="ServerLabel" Text="Server address" Style="{DynamicResource DdnMuted}" />
                 <TextBox x:Name="ServerBox" Style="{DynamicResource DdnInput}" />
-                <TextBlock Text="Login" Style="{DynamicResource DdnMuted}" />
+                <TextBlock x:Name="LocalHintLabel" Style="{DynamicResource DdnMuted}" TextWrapping="Wrap" Margin="0,2,0,0" />
+                <TextBlock x:Name="LoginLabel" Text="Login" Style="{DynamicResource DdnMuted}" />
                 <TextBox x:Name="LoginBox" Style="{DynamicResource DdnInput}" />
-                <TextBlock Text="Password" Style="{DynamicResource DdnMuted}" />
+                <TextBlock x:Name="PassLabel" Text="Password" Style="{DynamicResource DdnMuted}" />
                 <PasswordBox x:Name="PassBox" Style="{DynamicResource DdnPassword}" />
                 <CheckBox x:Name="RememberBox" Content="Remember me on this PC" Style="{DynamicResource DdnCheck}" />
 

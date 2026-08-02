@@ -20,12 +20,31 @@ namespace DeltaDotNet.Client.Views
         public AdminView()
         {
             InitializeComponent();
+            ApplyLang();
+            Lang.Changed += ApplyLang;
             Loaded += (s, e) =>
             {
                 Session.Net.Message += OnMessage;
                 Refresh();
             };
-            Unloaded += (s, e) => { Session.Net.Message -= OnMessage; };
+            Unloaded += (s, e) =>
+            {
+                Session.Net.Message -= OnMessage;
+                Lang.Changed -= ApplyLang;
+            };
+        }
+
+        /// <summary>Localizes the static captions of the owner control room.</summary>
+        private void ApplyLang()
+        {
+            UsersTitle.Text = Lang.T("admin.usersTitle");
+            RefreshBtn.Content = Lang.T("admin.refresh");
+            ControlTitle.Text = Lang.T("admin.controlRoom");
+            BroadcastBtn.Content = Lang.T("admin.broadcast");
+            MotdBtn.Content = Lang.T("admin.setMotd");
+            MaintenanceBtn.Content = Lang.T("admin.maintenance");
+            StatsBtn.Content = Lang.T("admin.refreshStats");
+            LiveLobbiesTitle.Text = Lang.T("admin.liveLobbies");
         }
 
         private void Refresh()

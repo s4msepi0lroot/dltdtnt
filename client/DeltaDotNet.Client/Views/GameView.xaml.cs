@@ -42,8 +42,31 @@ namespace DeltaDotNet.Client.Views
         public GameView()
         {
             InitializeComponent();
+            ApplyLang();
+            Lang.Changed += ApplyLang;
             Loaded += OnLoaded;
             Unloaded += OnUnloaded;
+        }
+
+        /// <summary>Localizes the static captions of the play screen.</summary>
+        private void ApplyLang()
+        {
+            WaitText.Text = Lang.T("game.waiting");
+            FocusBtn.Content = Lang.T("game.focus");
+            StopBtn.Content = Lang.T("game.stop");
+            BackBtn.Content = Lang.T("game.back");
+            GrabBtn.Content = _grabKeyboard ? Lang.T("game.release") : Lang.T("game.grab");
+            UpdateTitle();
+        }
+
+        /// <summary>Fills the title/subtitle from the current host/guest role.</summary>
+        private void UpdateTitle()
+        {
+            var lobby = Session.Lobby;
+            TitleText.Text = lobby == null
+                ? (Session.IsHost ? Lang.T("game.hostTitle") : Lang.T("game.guestTitle"))
+                : "* " + lobby.Name.ToUpperInvariant();
+            SubText.Text = Session.IsHost ? Lang.T("game.hostSub") : Lang.T("game.guestSub");
         }
 
         // ------------------------------------------------------------ lifetime
@@ -64,11 +87,7 @@ namespace DeltaDotNet.Client.Views
             StopBtn.Visibility = Session.IsHost ? Visibility.Visible : Visibility.Collapsed;
             GrabBtn.Visibility = Session.IsHost ? Visibility.Collapsed : Visibility.Visible;
 
-            var lobby = Session.Lobby;
-            TitleText.Text = "* " + (lobby == null ? "THE GAME" : lobby.Name.ToUpperInvariant());
-            SubText.Text = Session.IsHost
-                ? "You are the host. Keep the game window focused - the keys of the guests are injected into it."
-                : "You are player " + Session.MySlot + ". Keep this window focused and play on your own keyboard.";
+            UpdateTitle();
 
             if (Session.IsHost)
             {
@@ -96,6 +115,8 @@ namespace DeltaDotNet.Client.Views
                 _window.PreviewKeyUp -= OnWindowKeyUp;
                 _window = null;
             }
+
+            Lang.Changed -= ApplyLang;
 
             _hud.Stop();
             _hud.Tick -= OnHudTick;
@@ -265,7 +286,7 @@ namespace DeltaDotNet.Client.Views
         {
             _grabKeyboard = !_grabKeyboard;
             if (!_grabKeyboard) ReleaseEverything();
-            GrabBtn.Content = _grabKeyboard ? "RELEASE THE KEYBOARD" : "GRAB THE KEYBOARD";
+            GrabBtn.Content = _grabKeyboard ? Lang.T("game.release") : Lang.T("game.grab");
             MainWindow.Instance.SetStatus(_grabKeyboard
                 ? "your keys are sent to the game"
                 : "the keyboard is free, the game does not receive your keys");

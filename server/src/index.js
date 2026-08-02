@@ -30,6 +30,28 @@ function bearer(req) {
   return req.query.token || null;
 }
 
+// Friendly landing page so opening the address in a browser does not show
+// Express's default "Cannot GET /". Handy for checking the server is alive.
+app.get('/', (req, res) => {
+  const s = db.get();
+  res.type('html').send(
+    '<!doctype html><html><head><meta charset="utf-8">' +
+    '<title>DeltaDotNet server</title>' +
+    '<style>body{background:#000;color:#fff;font-family:Consolas,monospace;padding:32px}' +
+    'a{color:#fff23a}h1{color:#fff23a}code{color:#32b0ff}</style></head><body>' +
+    '<h1>* DeltaDotNet server is running</h1>' +
+    '<p>version <code>' + require('../package.json').version + '</code> &mdash; ' +
+    'players online: <code>' + hub.conns.size + '</code>, ' +
+    'lobbies: <code>' + L.all().length + '</code></p>' +
+    '<p>Put this address into the client\'s "Server address" field:</p>' +
+    '<p><code>http://127.0.0.1:' + PORT + '</code> (same PC) or ' +
+    '<code>http://YOUR-LAN-IP:' + PORT + '</code> (other PCs)</p>' +
+    '<p>Health JSON: <a href="/api/health">/api/health</a></p>' +
+    (s.settings.maintenance ? '<p style="color:#ff3b3b">MAINTENANCE MODE</p>' : '') +
+    '</body></html>'
+  );
+});
+
 app.get('/api/health', (req, res) => {
   const s = db.get();
   res.json({

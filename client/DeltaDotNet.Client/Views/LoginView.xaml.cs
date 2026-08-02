@@ -17,12 +17,16 @@ namespace DeltaDotNet.Client.Views
             LoginBox.Text = AppConfig.Current.Login;
             RememberBox.IsChecked = AppConfig.Current.RememberMe;
 
+            ApplyLang();
+            Lang.Changed += ApplyLang;
+            Unloaded += (s, e) => { Lang.Changed -= ApplyLang; };
+
             Loaded += async (s, e) =>
             {
                 // auto sign in with the saved token
                 if (AppConfig.Current.RememberMe && !string.IsNullOrEmpty(AppConfig.Current.Token))
                 {
-                    Info("restoring the previous session...");
+                    Info(Lang.T("login.restoring"));
                     var me = await ApiClient.MeAsync(AppConfig.Current.Token);
                     if (me.Ok)
                     {
@@ -33,8 +37,22 @@ namespace DeltaDotNet.Client.Views
                     }
                     AppConfig.Current.Token = "";
                 }
-                Info("enter your login and password");
+                Info(Lang.T("login.hint"));
             };
+        }
+
+        /// <summary>Re-applies every static caption in the current language.</summary>
+        private void ApplyLang()
+        {
+            TitleLabel.Text = Lang.T("login.title");
+            ServerLabel.Text = Lang.T("login.server");
+            LocalHintLabel.Text = Lang.T("login.localHint");
+            LoginLabel.Text = Lang.T("login.login");
+            PassLabel.Text = Lang.T("login.password");
+            RememberBox.Content = Lang.T("login.remember");
+            LoginBtn.Content = Lang.T("login.enter");
+            RegBtn.Content = Lang.T("login.register");
+            PingBtn.Content = Lang.T("login.check");
         }
 
         private void Info(string text)
@@ -60,13 +78,11 @@ namespace DeltaDotNet.Client.Views
         {
             StoreServer();
             Busy(true);
-            Info("checking " + AppConfig.Current.ServerUrl + " ...");
+            Info(Lang.F("login.checking", AppConfig.Current.ServerUrl));
             var r = await ApiClient.HealthAsync();
             Busy(false);
-            if (!r.Ok) { Info("server unavailable: " + r.Error); return; }
-            Info("server ok — v" + Json.Str(r.Data, "version") +
-                 ", players online: " + Json.Int(r.Data, "online") +
-                 ", lobbies: " + Json.Int(r.Data, "lobbies") +
+            if (!r.Ok) { Info(Lang.F("login.serverDown", r.Error)); return; }
+            Info(Lang.F("login.serverOk", Json.Str(r.Data, "version"), Json.Int(r.Data, "online"), Json.Int(r.Data, "lobbies")) +
                  "\n" + Json.Str(r.Data, "motd"));
         }
 
@@ -74,10 +90,10 @@ namespace DeltaDotNet.Client.Views
         {
             StoreServer();
             Busy(true);
-            Info("signing in...");
+            Info(Lang.T("login.signingIn"));
             var r = await ApiClient.LoginAsync(LoginBox.Text.Trim(), PassBox.Password);
             Busy(false);
-            if (!r.Ok) { Info("could not sign in: " + r.Error); return; }
+            if (!r.Ok) { Info(Lang.F("login.signInFail", r.Error)); return; }
             await AfterAuthAsync(r.Data);
         }
 
@@ -85,10 +101,10 @@ namespace DeltaDotNet.Client.Views
         {
             StoreServer();
             Busy(true);
-            Info("creating the account...");
+            Info(Lang.T("login.registering"));
             var r = await ApiClient.RegisterAsync(LoginBox.Text.Trim(), PassBox.Password);
             Busy(false);
-            if (!r.Ok) { Info("registration failed: " + r.Error); return; }
+            if (!r.Ok) { Info(Lang.F("login.regFail", r.Error)); return; }
             await AfterAuthAsync(r.Data);
         }
 
@@ -104,12 +120,12 @@ namespace DeltaDotNet.Client.Views
 
         private async Task ConnectAsync()
         {
-            Info("connecting to the relay...");
+            Info(Lang.T("login.connecting"));
             var err = await Session.Net.ConnectAsync(AppConfig.Current.ServerUrl, Session.Token);
             if (err != null) { Info(err); return; }
             MainWindow.Instance.ShowLoggedInChrome();
             MainWindow.Instance.Navigate(new LobbyListView());
-            MainWindow.Instance.SetStatus("signed in as " + Session.Display);
+            MainWindow.Instance.SetStatus(Lang.F("status.signedInAs", Session.Display));
         }
     }
 }

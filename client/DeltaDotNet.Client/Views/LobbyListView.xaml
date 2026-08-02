@@ -17,8 +17,8 @@
                 </Grid.RowDefinitions>
 
                 <StackPanel Grid.Row="0" Orientation="Horizontal">
-                    <TextBlock Text="* LOBBIES" Style="{DynamicResource DdnTitle}" />
-                    <Button Content="REFRESH" Style="{DynamicResource DdnButton}" Click="Refresh_Click" Margin="18,0,0,8" />
+                    <TextBlock x:Name="ListTitle" Text="* LOBBIES" Style="{DynamicResource DdnTitle}" />
+                    <Button x:Name="RefreshBtn" Content="REFRESH" Style="{DynamicResource DdnButton}" Click="Refresh_Click" Margin="18,0,0,8" />
                 </StackPanel>
 
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
@@ -26,11 +26,11 @@
                 </ScrollViewer>
 
                 <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
-                    <TextBlock Text="Join by ID:" Style="{DynamicResource DdnText}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBlock x:Name="JoinByLabel" Text="Join by ID:" Style="{DynamicResource DdnText}" VerticalAlignment="Center" Margin="0,0,8,0" />
                     <TextBox x:Name="JoinIdBox" Style="{DynamicResource DdnInput}" Width="140" Margin="0,0,8,0" />
-                    <TextBlock Text="password:" Style="{DynamicResource DdnText}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBlock x:Name="JoinPassLabel" Text="password:" Style="{DynamicResource DdnText}" VerticalAlignment="Center" Margin="0,0,8,0" />
                     <TextBox x:Name="JoinPassBox" Style="{DynamicResource DdnInput}" Width="140" Margin="0,0,8,0" />
-                    <Button Content="JOIN" Style="{DynamicResource DdnButton}" Click="JoinById_Click" />
+                    <Button x:Name="JoinByBtn" Content="JOIN" Style="{DynamicResource DdnButton}" Click="JoinById_Click" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -39,12 +39,12 @@
         <Border Grid.Column="1" Style="{DynamicResource DdnBox}">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
-                    <TextBlock Text="* CREATE A LOBBY" Style="{DynamicResource DdnTitle}" />
+                    <TextBlock x:Name="CreateTitle" Text="* CREATE A LOBBY" Style="{DynamicResource DdnTitle}" />
 
-                    <TextBlock Text="Lobby name" Style="{DynamicResource DdnMuted}" />
+                    <TextBlock x:Name="NameLabel" Text="Lobby name" Style="{DynamicResource DdnMuted}" />
                     <TextBox x:Name="NameBox" Style="{DynamicResource DdnInput}" />
 
-                    <TextBlock Text="Number of players" Style="{DynamicResource DdnMuted}" />
+                    <TextBlock x:Name="CountLabel" Text="Number of players" Style="{DynamicResource DdnMuted}" />
                     <ComboBox x:Name="PlayersBox" Style="{DynamicResource DdnCombo}">
                         <ComboBoxItem Content="2 players" Tag="2" IsSelected="True" />
                         <ComboBoxItem Content="3 players" Tag="3" />
@@ -55,22 +55,22 @@
                         <ComboBoxItem Content="8 players" Tag="8" />
                     </ComboBox>
 
-                    <TextBlock Text="Access" Style="{DynamicResource DdnMuted}" />
+                    <TextBlock x:Name="AccessLabel" Text="Access" Style="{DynamicResource DdnMuted}" />
                     <ComboBox x:Name="VisBox" Style="{DynamicResource DdnCombo}" SelectionChanged="Vis_Changed">
-                        <ComboBoxItem Content="Open - anybody can join" Tag="open" IsSelected="True" />
-                        <ComboBoxItem Content="Closed - password or guest list" Tag="closed" />
+                        <ComboBoxItem x:Name="VisOpenItem" Content="Open - anybody can join" Tag="open" IsSelected="True" />
+                        <ComboBoxItem x:Name="VisClosedItem" Content="Closed - password or guest list" Tag="closed" />
                     </ComboBox>
 
                     <StackPanel x:Name="ClosedPanel" Visibility="Collapsed">
-                        <TextBlock Text="Password (leave empty to use the guest list only)" Style="{DynamicResource DdnMuted}" TextWrapping="Wrap" />
+                        <TextBlock x:Name="PassHint" Text="Password (leave empty to use the guest list only)" Style="{DynamicResource DdnMuted}" TextWrapping="Wrap" />
                         <TextBox x:Name="PassBox" Style="{DynamicResource DdnInput}" />
-                        <TextBlock Text="Guest list: logins separated by a comma" Style="{DynamicResource DdnMuted}" TextWrapping="Wrap" />
+                        <TextBlock x:Name="AllowHint" Text="Guest list: logins separated by a comma" Style="{DynamicResource DdnMuted}" TextWrapping="Wrap" />
                         <TextBox x:Name="AllowBox" Style="{DynamicResource DdnInput}" />
                     </StackPanel>
 
-                    <Button Content="CREATE" Style="{DynamicResource DdnButton}" Click="Create_Click" Margin="0,10,0,0" />
+                    <Button x:Name="CreateBtn" Content="CREATE" Style="{DynamicResource DdnButton}" Click="Create_Click" Margin="0,10,0,0" />
 
-                    <TextBlock Text="You become the host: your PC runs the game and streams it. Everyone else only needs the client."
+                    <TextBlock x:Name="HostNote" Text="You become the host: your PC runs the game and streams it. Everyone else only needs the client."
                                Style="{DynamicResource DdnMuted}" TextWrapping="Wrap" Margin="0,10,0,0" />
                     <TextBlock x:Name="MotdText" Style="{DynamicResource DdnText}" TextWrapping="Wrap" Margin="0,12,0,0" />
                 </StackPanel>

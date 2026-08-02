@@ -37,7 +37,8 @@ namespace DeltaDotNet.Client.Core
         /// <summary>Turns http(s)://host:port into ws(s)://host:port/ws?token=...</summary>
         public static string BuildWsUrl(string baseUrl, string token)
         {
-            var b = (baseUrl ?? "").TrimEnd('/');
+            // rewrite wildcard hosts (0.0.0.0 / ::) to loopback so a local server works
+            var b = Endpoint.Normalize(baseUrl);
             if (b.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) b = "wss://" + b.Substring(8);
             else if (b.StartsWith("http://", StringComparison.OrdinalIgnoreCase)) b = "ws://" + b.Substring(7);
             else if (!b.StartsWith("ws", StringComparison.OrdinalIgnoreCase)) b = "ws://" + b;

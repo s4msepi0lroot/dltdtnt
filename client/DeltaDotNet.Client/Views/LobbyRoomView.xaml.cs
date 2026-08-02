@@ -17,12 +17,35 @@ namespace DeltaDotNet.Client.Views
         public LobbyRoomView()
         {
             InitializeComponent();
+            ApplyLang();
+            Lang.Changed += ApplyLang;
             Loaded += (s, e) =>
             {
                 Session.Net.Message += OnMessage;
                 Render();
             };
-            Unloaded += (s, e) => { Session.Net.Message -= OnMessage; };
+            Unloaded += (s, e) =>
+            {
+                Session.Net.Message -= OnMessage;
+                Lang.Changed -= ApplyLang;
+            };
+        }
+
+        /// <summary>Localizes the static captions; dynamic rows are re-rendered by Render().</summary>
+        private void ApplyLang()
+        {
+            ChatTitle.Text = Lang.T("room.chat");
+            StartBtn.Content = Lang.T("room.start");
+            WatchBtn.Content = Lang.T("room.watch");
+            LeaveBtn.Content = Lang.T("room.leave");
+            CloseBtn.Content = Lang.T("room.close");
+            SendBtn.Content = Lang.T("room.send");
+            HostToolsTitle.Text = Lang.T("room.hostTools");
+            RenameBtn.Content = Lang.T("room.rename");
+            AccessBtn.Content = Lang.T("room.access");
+            SlotsBtn.Content = Lang.T("room.slots");
+            UnbanBtn.Content = Lang.T("room.unban");
+            if (Session.Lobby != null) Render();
         }
 
         private void OnMessage(JsonElement msg)
@@ -68,10 +91,11 @@ namespace DeltaDotNet.Client.Views
 
             TitleText.Text = "* " + lobby.Name.ToUpperInvariant();
             SubText.Text = "id: " + lobby.Id +
-                           "   access: " + (lobby.Visibility == "closed" ? "closed" : "open") +
-                           "   players: " + lobby.Members.Count + "/" + lobby.MaxPlayers +
-                           "   host: " + lobby.Host +
-                           "   your slot: " + Session.MySlot;
+                           "   " + Lang.T("lobbies.access").ToLowerInvariant() + ": " +
+                           (lobby.Visibility == "closed" ? Lang.T("lobbies.closedTag") : Lang.T("lobbies.openTag")) +
+                           "   " + Lang.T("lobbies.players") + ": " + lobby.Members.Count + "/" + lobby.MaxPlayers +
+                           "   " + Lang.T("common.host") + ": " + lobby.Host +
+                           "   " + Lang.F("room.slot", Session.MySlot);
 
             StartBtn.Visibility = Session.IsHost ? Visibility.Visible : Visibility.Collapsed;
             CloseBtn.Visibility = Session.IsHost ? Visibility.Visible : Visibility.Collapsed;

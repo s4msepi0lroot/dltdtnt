@@ -15,12 +15,44 @@ namespace DeltaDotNet.Client.Views
             NameBox.Text = Session.Display + "'s lobby";
             MotdText.Text = Session.Motd;
 
+            ApplyLang();
+            Lang.Changed += ApplyLang;
+
             Loaded += (s, e) =>
             {
                 Session.Net.Message += OnMessage;
                 Refresh();
             };
-            Unloaded += (s, e) => { Session.Net.Message -= OnMessage; };
+            Unloaded += (s, e) =>
+            {
+                Session.Net.Message -= OnMessage;
+                Lang.Changed -= ApplyLang;
+            };
+        }
+
+        /// <summary>Localizes the static captions of this screen.</summary>
+        private void ApplyLang()
+        {
+            ListTitle.Text = Lang.T("lobbies.title");
+            RefreshBtn.Content = Lang.T("lobbies.refresh");
+            JoinByLabel.Text = Lang.T("lobbies.joinById");
+            JoinPassLabel.Text = Lang.T("lobbies.passwordShort");
+            JoinByBtn.Content = Lang.T("lobbies.join");
+            CreateTitle.Text = Lang.T("lobbies.create");
+            NameLabel.Text = Lang.T("lobbies.name");
+            CountLabel.Text = Lang.T("lobbies.count");
+            AccessLabel.Text = Lang.T("lobbies.access");
+            VisOpenItem.Content = Lang.T("lobbies.accessOpen");
+            VisClosedItem.Content = Lang.T("lobbies.accessClosed");
+            PassHint.Text = Lang.T("lobbies.passHint");
+            AllowHint.Text = Lang.T("lobbies.allowHint");
+            CreateBtn.Content = Lang.T("lobbies.createBtn");
+            HostNote.Text = Lang.T("lobbies.hostNote");
+            foreach (var o in PlayersBox.Items)
+            {
+                var item = o as ComboBoxItem;
+                if (item != null) item.Content = Lang.F("lobbies.playersN", Convert.ToString(item.Tag));
+            }
         }
 
         private void OnMessage(JsonElement msg)
@@ -79,9 +111,8 @@ namespace DeltaDotNet.Client.Views
                 });
                 info.Children.Add(new TextBlock
                 {
-                    Text = "host: " + Json.Str(l, "host") +
-                           "   players: " + Json.Int(l, "players") + "/" + Json.Int(l, "maxPlayers") +
-                           "   state: " + Json.Str(l, "state") +
+                    Text = Lang.T("common.host") + ": " + Json.Str(l, "host") +
+                           "   " + Lang.T("lobbies.players") + ": " + Json.Int(l, "players") + "/" + Json.Int(l, "maxPlayers") +
                            "   id: " + id,
                     Style = (Style)FindResource("DdnMuted")
                 });
@@ -90,7 +121,7 @@ namespace DeltaDotNet.Client.Views
 
                 var joinBtn = new Button
                 {
-                    Content = "JOIN",
+                    Content = Lang.T("lobbies.join"),
                     Style = (Style)FindResource("DdnButton"),
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = new Thickness(8, 0, 0, 0)
@@ -107,7 +138,7 @@ namespace DeltaDotNet.Client.Views
             {
                 ListPanel.Children.Add(new TextBlock
                 {
-                    Text = "No open lobbies yet. Create the first one!",
+                    Text = Lang.T("lobbies.empty"),
                     Style = (Style)FindResource("DdnMuted")
                 });
             }

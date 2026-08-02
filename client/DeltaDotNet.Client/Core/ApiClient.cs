@@ -24,7 +24,9 @@ namespace DeltaDotNet.Client.Core
 
         public static string BaseUrl
         {
-            get { return (AppConfig.Current.ServerUrl ?? "").TrimEnd('/'); }
+            // Endpoint.Normalize turns a missing scheme or a 0.0.0.0/:: wildcard
+            // host into a dial-able http://127.0.0.1 style URL.
+            get { return Endpoint.Normalize(AppConfig.Current.ServerUrl); }
         }
 
         private static async Task<ApiResult> SendAsync(HttpRequestMessage req)
