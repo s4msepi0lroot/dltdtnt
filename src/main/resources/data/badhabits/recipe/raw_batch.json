@@ -1,0 +1,22 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "badhabits:chem_reagent"
+    },
+    {
+      "item": "badhabits:chem_reagent"
+    },
+    {
+      "item": "minecraft:nether_wart"
+    },
+    {
+      "item": "minecraft:redstone"
+    }
+  ],
+  "result": {
+    "id": "badhabits:raw_batch",
+    "count": 1
+  }
+}

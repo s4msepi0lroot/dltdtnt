@@ -1,0 +1,28 @@
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="${mod_license}"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+authors="${mod_authors}"
+description='''
+Сигареты пяти видов, вымышленная синтетика, зависимость, ломка, передоз, детокс и кашель в чате.
+Вся логика серверная: без миксинов, без своих пакетов и без клиентских классов в общем коде,
+поэтому мод работает в обычном мультиплеере и на гибридных ядрах (Youer, Mohist, Arclight, Magma).
+'''
+
+[[dependencies.${mod_id}]]
+modId="neoforge"
+type="required"
+versionRange="${neo_version_range}"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="minecraft"
+type="required"
+versionRange="${minecraft_version_range}"
+ordering="NONE"
+side="BOTH"

@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:blasting",
+  "category": "misc",
+  "ingredient": {
+    "item": "badhabits:raw_batch"
+  },
+  "result": {
+    "id": "badhabits:crystal_base"
+  },
+  "experience": 0.35,
+  "cookingtime": 150
+}

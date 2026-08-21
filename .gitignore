@@ -1,18 +1,25 @@
-# .NET
-bin/
-obj/
-publish/
-*.user
-*.suo
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
 
-# Node
-node_modules/
-npm-debug.log*
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
 
-# server runtime data
-server/data/
-server/.env
+# NeoForge / ModDevGradle
+run/
+runs/
+runClient/
+runServer/
+logs/
 
-# build artefacts
-*.zip
-*.ddntheme
+# OS
+.DS_Store
+Thumbs.db

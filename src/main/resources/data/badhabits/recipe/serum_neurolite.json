@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "badhabits:crystal_base"
+    },
+    {
+      "item": "badhabits:vial"
+    },
+    {
+      "item": "badhabits:vial"
+    },
+    {
+      "item": "minecraft:ghast_tear"
+    },
+    {
+      "item": "minecraft:fermented_spider_eye"
+    }
+  ],
+  "result": {
+    "id": "badhabits:serum_neurolite",
+    "count": 2
+  }
+}

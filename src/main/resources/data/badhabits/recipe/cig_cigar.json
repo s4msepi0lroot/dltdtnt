@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "badhabits:tobacco_leaf"
+    },
+    {
+      "item": "badhabits:tobacco_leaf"
+    },
+    {
+      "item": "badhabits:tobacco_leaf"
+    },
+    {
+      "item": "minecraft:honeycomb"
+    },
+    {
+      "item": "badhabits:rolling_paper"
+    }
+  ],
+  "result": {
+    "id": "badhabits:cig_cigar",
+    "count": 1
+  }
+}

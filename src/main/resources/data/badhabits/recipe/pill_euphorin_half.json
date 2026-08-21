@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "badhabits:pill_euphorin"
+    }
+  ],
+  "result": {
+    "id": "badhabits:pill_euphorin_half",
+    "count": 2
+  }
+}
