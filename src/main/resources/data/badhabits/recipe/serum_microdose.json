@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "badhabits:serum_neurolite"
+    },
+    {
+      "item": "badhabits:vial"
+    },
+    {
+      "item": "badhabits:vial"
+    }
+  ],
+  "result": {
+    "id": "badhabits:serum_microdose",
+    "count": 3
+  }
+}

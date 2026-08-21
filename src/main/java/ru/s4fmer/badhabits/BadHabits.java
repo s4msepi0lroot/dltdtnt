@@ -8,8 +8,11 @@ import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 import ru.s4fmer.badhabits.event.BhEvents;
+import ru.s4fmer.badhabits.registry.ModBlockEntities;
+import ru.s4fmer.badhabits.registry.ModBlocks;
 import ru.s4fmer.badhabits.registry.ModCreativeTabs;
 import ru.s4fmer.badhabits.registry.ModItems;
+import ru.s4fmer.badhabits.registry.ModMenus;
 
 /**
  * Bad Habits - NeoForge 1.21.1
@@ -25,7 +28,10 @@ public class BadHabits {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public BadHabits(IEventBus modBus, ModContainer container) {
+        ModBlocks.register(modBus);
         ModItems.register(modBus);
+        ModBlockEntities.register(modBus);
+        ModMenus.register(modBus);
         ModCreativeTabs.register(modBus);
 
         // SERVER-konfig: hranitsya v <world>/serverconfig/badhabits-server.toml i sinhroniziruetsya klientu.

@@ -12,6 +12,7 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.neoforged.neoforge.network.PacketDistributor;
 import ru.s4fmer.badhabits.BhConfig;
 import ru.s4fmer.badhabits.addiction.AddictionLogic;
 import ru.s4fmer.badhabits.addiction.AddictionManager;
@@ -19,6 +20,7 @@ import ru.s4fmer.badhabits.addiction.Meter;
 import ru.s4fmer.badhabits.addiction.PlayerAddiction;
 import ru.s4fmer.badhabits.addiction.Substance;
 import ru.s4fmer.badhabits.command.BhCommands;
+import ru.s4fmer.badhabits.network.StatusPayload;
 import ru.s4fmer.badhabits.util.CoughHelper;
 
 /**
@@ -52,17 +54,31 @@ public class BhEvents {
         int tick = server.getTickCount();
 
         if (tick % 20 == 0) {
+            boolean hud = BhConfig.HUD_ENABLED.get();
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-                if (!player.isAlive() || player.isSpectator() || player.isCreative()) {
-                    continue;
+                if (player.isAlive() && !player.isSpectator() && !player.isCreative()) {
+                    AddictionLogic.tickPlayer(player, 1);
                 }
-                AddictionLogic.tickPlayer(player, 1);
+                if (hud) {
+                    sendStatus(player);
+                }
             }
         }
 
         if (tick % 1200 == 0) {
             AddictionManager.saveIfDirty();
         }
+    }
+
+    /** One tiny packet per second per player: feeds the HUD bars. */
+    private static void sendStatus(ServerPlayer player) {
+        PlayerAddiction data = AddictionManager.getIfPresent(player.getUUID());
+        if (data == null) {
+            PacketDistributor.sendToPlayer(player, StatusPayload.empty());
+            return;
+        }
+        PacketDistributor.sendToPlayer(player, StatusPayload.of(
+                data.meter(Substance.NICOTINE), data.meter(Substance.NARCOTIC)));
     }
 
     // -------------------------------------------------------------- players

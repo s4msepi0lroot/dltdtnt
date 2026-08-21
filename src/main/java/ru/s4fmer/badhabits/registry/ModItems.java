@@ -1,8 +1,10 @@
 package ru.s4fmer.badhabits.registry;
 
 import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Rarity;
+import net.minecraft.world.level.block.Block;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
@@ -65,6 +67,13 @@ public final class ModItems {
 
     // ----------------------------------------------------------- cigarettes
 
+    /** Tier 0: the smallest dose in the mod - the tool for tapering nicotine down. */
+    public static final DeferredItem<SubstanceItem> CIG_SLIM = add("cig_slim", () -> new SubstanceItem(
+            new Item.Properties().stacksTo(16),
+            Substance.NICOTINE, SubstanceItem.Style.SMOKE,
+            4.0F, 1.0F, 28, 1,
+            Collections.emptyList(), true, false));
+
     /** Tier 1: cheapest, gives nothing at all. */
     public static final DeferredItem<SubstanceItem> CIG_ROLLUP = add("cig_rollup", () -> new SubstanceItem(
             new Item.Properties().stacksTo(16),
@@ -87,6 +96,14 @@ public final class ModItems {
             List.of(EffectSpec.of(MobEffects.NIGHT_VISION, 60),
                     EffectSpec.of(MobEffects.WATER_BREATHING, 30)), true, false));
 
+    /** Tier 3.5 */
+    public static final DeferredItem<SubstanceItem> CIG_CLOVE = add("cig_clove", () -> new SubstanceItem(
+            new Item.Properties().stacksTo(16),
+            Substance.NICOTINE, SubstanceItem.Style.SMOKE,
+            14.0F, 3.5F, 36, 1,
+            List.of(EffectSpec.of(MobEffects.REGENERATION, 12, 0),
+                    EffectSpec.of(MobEffects.HEALTH_BOOST, 60, 0)), true, false));
+
     /** Tier 4 */
     public static final DeferredItem<SubstanceItem> CIG_CIGAR = add("cig_cigar", () -> new SubstanceItem(
             new Item.Properties().stacksTo(8),
@@ -95,6 +112,15 @@ public final class ModItems {
             List.of(EffectSpec.of(MobEffects.DAMAGE_RESISTANCE, 40),
                     EffectSpec.of(MobEffects.FIRE_RESISTANCE, 30),
                     EffectSpec.of(MobEffects.ABSORPTION, 60)), true, false));
+
+    /** Tier 4.5: strong, but the tar bites back. */
+    public static final DeferredItem<SubstanceItem> CIG_BLACK = add("cig_black", () -> new SubstanceItem(
+            new Item.Properties().stacksTo(8),
+            Substance.NICOTINE, SubstanceItem.Style.SMOKE,
+            18.0F, 4.5F, 44, 2,
+            List.of(EffectSpec.of(MobEffects.DAMAGE_BOOST, 30, 1),
+                    EffectSpec.of(MobEffects.DAMAGE_RESISTANCE, 30, 0),
+                    EffectSpec.of(MobEffects.CONFUSION, 6, 0)), true, false));
 
     /** Tier 5: the best one. */
     public static final DeferredItem<SubstanceItem> CIG_GOLD = add("cig_gold", () -> new SubstanceItem(
@@ -107,6 +133,15 @@ public final class ModItems {
                     EffectSpec.of(MobEffects.LUCK, 60, 0)), true, false));
 
     // ------------------------------------------------- fictional synthetics
+
+    /** Calm variant, swallowed, no tool required. */
+    public static final DeferredItem<SubstanceItem> PILL_CALMEX = add("pill_calmex", () -> new SubstanceItem(
+            new Item.Properties().stacksTo(16),
+            Substance.NARCOTIC, SubstanceItem.Style.SWALLOW,
+            10.0F, 2.5F, 24, 0,
+            List.of(EffectSpec.of(MobEffects.DAMAGE_RESISTANCE, 60, 0),
+                    EffectSpec.of(MobEffects.HEALTH_BOOST, 60, 0),
+                    EffectSpec.of(MobEffects.MOVEMENT_SLOWDOWN, 20, 0)), false, false));
 
     /** Swallowed, no tool required. */
     public static final DeferredItem<SubstanceItem> PILL_EUPHORIN = add("pill_euphorin", () -> new SubstanceItem(
@@ -124,6 +159,13 @@ public final class ModItems {
             Substance.NARCOTIC, SubstanceItem.Style.SWALLOW,
             8.0F, 2.0F, 24, 0,
             List.of(EffectSpec.of(MobEffects.MOVEMENT_SPEED, 20, 0)), false, false));
+
+    /** Diluted serum: the tapering tool for the synthetic line. */
+    public static final DeferredItem<SubstanceItem> SERUM_MICRODOSE = add("serum_microdose", () -> new SubstanceItem(
+            new Item.Properties().stacksTo(16),
+            Substance.NARCOTIC, SubstanceItem.Style.INJECT,
+            5.0F, 1.0F, 24, 1,
+            List.of(EffectSpec.of(MobEffects.MOVEMENT_SPEED, 10, 0)), false, false));
 
     /** Injected with a syringe. */
     public static final DeferredItem<SubstanceItem> SERUM_NEUROLITE = add("serum_neurolite", () -> new SubstanceItem(
@@ -156,14 +198,47 @@ public final class ModItems {
                     EffectSpec.of(MobEffects.NIGHT_VISION, 30, 0),
                     EffectSpec.of(MobEffects.CONFUSION, 8, 0)), true, false));
 
+    /** Inhaled through a glass tube, water themed. */
+    public static final DeferredItem<SubstanceItem> INHALER_OZON = add("inhaler_ozon", () -> new SubstanceItem(
+            new Item.Properties().stacksTo(8),
+            Substance.NARCOTIC, SubstanceItem.Style.INHALE,
+            24.0F, 7.0F, 28, 1,
+            List.of(EffectSpec.of(MobEffects.DOLPHINS_GRACE, 60, 0),
+                    EffectSpec.of(MobEffects.WATER_BREATHING, 60, 0),
+                    EffectSpec.of(MobEffects.CONDUIT_POWER, 30, 0),
+                    EffectSpec.of(MobEffects.CONFUSION, 5, 0)), false, false));
+
+    /** End game injection: huge buffs, huge dose, very close to an overdose. */
+    public static final DeferredItem<SubstanceItem> ELIXIR_TITAN = add("elixir_titan", () -> new SubstanceItem(
+            new Item.Properties().stacksTo(4).rarity(Rarity.RARE),
+            Substance.NARCOTIC, SubstanceItem.Style.INJECT,
+            45.0F, 12.0F, 40, 2,
+            List.of(EffectSpec.of(MobEffects.HEALTH_BOOST, 90, 2),
+                    EffectSpec.of(MobEffects.ABSORPTION, 90, 1),
+                    EffectSpec.of(MobEffects.DAMAGE_BOOST, 45, 1),
+                    EffectSpec.of(MobEffects.DAMAGE_RESISTANCE, 30, 1),
+                    EffectSpec.of(MobEffects.HUNGER, 30, 0),
+                    EffectSpec.of(MobEffects.CONFUSION, 8, 0)), false, false));
+
     // ------------------------------------------------------------ treatment
 
     public static final DeferredItem<DetoxItem> DETOX_TONIC =
             add("detox_tonic", () -> new DetoxItem(new Item.Properties().stacksTo(8)));
 
+    // --------------------------------------------------------------- block
+
+    public static final DeferredItem<BlockItem> SYNTH_LAB =
+            addBlock("synth_lab", ModBlocks.SYNTH_LAB);
+
     // ---------------------------------------------------------------- infra
 
     private ModItems() {
+    }
+
+    private static DeferredItem<BlockItem> addBlock(String name, Supplier<? extends Block> block) {
+        DeferredItem<BlockItem> item = ITEMS.register(name, () -> new BlockItem(block.get(), new Item.Properties()));
+        ORDER.add(item);
+        return item;
     }
 
     private static <I extends Item> DeferredItem<I> add(String name, Supplier<I> supplier) {

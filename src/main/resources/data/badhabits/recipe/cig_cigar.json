@@ -3,6 +3,9 @@
   "category": "misc",
   "ingredients": [
     {
+      "item": "badhabits:rolling_paper"
+    },
+    {
       "item": "badhabits:tobacco_leaf"
     },
     {
@@ -13,9 +16,6 @@
     },
     {
       "item": "minecraft:honeycomb"
-    },
-    {
-      "item": "badhabits:rolling_paper"
     }
   ],
   "result": {

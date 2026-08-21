@@ -49,6 +49,9 @@ public final class BhConfig {
     // ---- detox ----
     public static final ModConfigSpec.DoubleValue DETOX_REDUCTION;
 
+    // ---- hud ----
+    public static final ModConfigSpec.BooleanValue HUD_ENABLED;
+
     static {
         ModConfigSpec.Builder b = new ModConfigSpec.Builder();
 
@@ -141,6 +144,13 @@ public final class BhConfig {
         DETOX_REDUCTION = b
                 .comment("Addiction removed by one Detox Tonic (applies to both nicotine and narcotic).")
                 .defineInRange("detoxReduction", 12.0D, 0.0D, 1000.0D);
+        b.pop();
+
+        b.comment("On-screen dose / addiction bars").push("hud");
+        HUD_ENABLED = b
+                .comment("Send the status packet to clients and draw the HUD bars in the lower left corner.",
+                        "Turn it off to hide the bars for everyone on the server.")
+                .define("enabled", true);
         b.pop();
 
         SPEC = b.build();

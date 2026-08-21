@@ -1,93 +1,62 @@
-# Bad Habits — NeoForge 1.21.1
+# Bad Habits — 1.1.0
 
-Мод добавляет сигареты (5 видов), вымышленную синтетику (5 видов), зависимость, ломку, передоз,
-толерантность, лечение через снижение дозы и кашель в чате.
+Сигареты и выдуманная синтетика для **Minecraft 1.21.1 / NeoForge 21.1.248**
+с зависимостью, ломкой, передозом, кашлем в чате, лабораторией синтеза и HUD.
 
-* **Minecraft:** 1.21.1
-* **NeoForge:** 21.1.248 (`[21.1.248,)`)
-* **Java:** 21
-* **Сторона:** нужен и на сервере, и на клиенте (`side = BOTH`)
-* **Лицензия:** MIT
+* Полная документация (крафты, добыча ингредиентов, механика, конфиг): **[DOCS.md](DOCS.md)**
+* Мультиплеер: вся логика серверная, совместимо с NeoForge-сервером и гибридами
+  **Youer / Mohist / Magma / Arclight**. Мод нужен и клиенту, и серверу.
 
-Полная документация крафтов и механик: [DOCS.md](DOCS.md)
+## Кратко
 
----
+| Что | Сколько |
+|---|---|
+| Предметы | 28 (8 сигарет, 9 видов синтетики, инструменты, заготовки, детокс) |
+| Блоки | 1 — Лаборатория синтеза (GUI, 12 рецептов) |
+| Рецепты верстака/печи | 32 |
+| Шкалы зависимости | 2 — «Никотин» и «Синтетика» |
+| Команды | `/badhabits status | clear | set` |
+| Конфиг | `<world>/serverconfig/badhabits-server.toml`, ~30 параметров |
 
-## Сборка
+## Как это играется
 
-### Вариант 1 — GitHub Actions (ничего не ставить на ПК)
+1. Жаришь листву в печи → **табачный лист**, крафтишь бумагу и фильтр → первые сигареты.
+2. Курить нужно с **зажигалкой** (расходуется), колоть — **шприцем**, вдыхать — **стеклянной трубкой**.
+3. Каждое употребление даёт эффекты, но растит **зависимость**. Чем выше зависимость,
+   тем короче эффекты (толерантность).
+4. Не принимаешь — начинается **ломка**: 4 стадии, дебаффы, на 3–4 стадии течёт здоровье
+   до 1 ♥ (по умолчанию не убивает).
+5. Выйти можно **снижением дозы** (принять вещество слабее предыдущего) или **Тоником «Детокс»**.
+6. При никотиновой зависимости твои сообщения в чате получают `*кашель*` перед текстом.
 
-1. Создайте новый репозиторий на GitHub.
-2. Залейте туда содержимое архива (файл `build.gradle` должен лежать в корне).
-3. Вкладка **Actions** → workflow `Build mod jar` запустится сам.
-4. Готовый jar — в артефакте `badhabits-jar` (внизу страницы сборки).
+## Сборка jar
 
-Всё уже настроено в `.github/workflows/build.yml`.
+GitHub Actions уже настроен (`.github/workflows/build.yml`):
+загрузи проект в репозиторий → вкладка **Actions** → workflow **Build mod jar** →
+артефакт **badhabits-jar** содержит `badhabits-1.1.0.jar`.
 
-### Вариант 2 — локально
-
-Нужны JDK 21 и Gradle 8.8+ (или 8.12.1).
-
-```bash
-cd badhabits
-gradle wrapper          # один раз: создаст ./gradlew и gradle-wrapper.jar
-./gradlew build         # Windows: gradlew.bat build
-```
-
-Готовый файл: `build/libs/badhabits-1.0.0.jar`
-
-Полезные задачи:
-
-```bash
-./gradlew runClient     # тестовый клиент
-./gradlew runServer     # тестовый сервер (--nogui)
-```
-
-### Вариант 3 — IntelliJ IDEA
-
-`File → Open` → папка `badhabits` → доверить Gradle-проекту → Gradle сам скачает NeoForge 21.1.248.
-Затем задача `build` или конфигурация запуска `runClient`.
-
-> Первая сборка тянет маппинги и артефакты NeoForge — нужен интернет и ~2 ГБ на кэш Gradle.
-
----
-
-## Установка
-
-Кинуть jar в `mods/` на сервере **и** у каждого игрока. Зависимостей больше нет.
-
-### Гибридные ядра (Youer / Mohist / Arclight / Magma-Neo)
-
-Мод намеренно написан так, чтобы жить на гибридах:
-
-* нет миксинов и Access Transformers — нечему конфликтовать с патчами ядра;
-* нет своих сетевых пакетов и нет обращений к клиентским классам в общем коде;
-* всё состояние живёт на сервере и пишется в `<мир>/badhabits/addiction.json`;
-* команды требуют permission level 2 — работает и с ванильными опами, и с LuckPerms;
-* если чат-плагин игнорирует правку сообщения — включите `cough.rebroadcastInsteadOfEditing = true`.
-
----
+Локально: JDK 21 + `gradle build` (файла `gradle-wrapper.jar` в архиве нет, он бинарный).
 
 ## Структура
 
 ```
-badhabits/
-  build.gradle, settings.gradle, gradle.properties
-  .github/workflows/build.yml          — сборка jar без локального Gradle
-  src/main/java/ru/s4fmer/badhabits/
-    BadHabits.java                     — точка входа
-    BhConfig.java                      — серверный конфиг (30+ параметров)
-    addiction/                         — доза, зависимость, ломка, сохранение
-    item/                              — предметы и способы приёма
-    registry/                          — регистрация предметов и креатив-вкладки
-    event/BhEvents.java                — тик, чат-кашель, вход/выход/респавн
-    command/BhCommands.java            — /badhabits
-    util/                              — сообщения и кашель
-  src/main/resources/
-    META-INF/neoforge.mods.toml
-    assets/badhabits/{lang,models/item,textures/item}
-    data/badhabits/recipe/             — 24 рецепта
+src/main/java/ru/s4fmer/badhabits/
+  BadHabits.java, BhConfig.java
+  addiction/   Substance, Meter, PlayerAddiction, AddictionManager, AddictionLogic
+  item/        SubstanceItem, LighterItem, DetoxItem, EffectSpec, UseTool, ToolHelper
+  block/       LabBlock, LabBlockEntity, LabRecipes
+  menu/        LabMenu
+  client/      LabScreen, BhHud, BhClientSetup
+  network/     StatusPayload, BhNetwork, BhStatusHolder
+  registry/    ModItems, ModBlocks, ModBlockEntities, ModMenus, ModCreativeTabs
+  event/       BhEvents
+  command/     BhCommands
+  util/        Msg, CoughHelper
+src/main/resources/
+  META-INF/neoforge.mods.toml, pack.mcmeta
+  assets/badhabits/  lang (en_us, ru_ru), models, blockstates, textures (item 32x32, block, gui)
+  data/badhabits/    recipe (32), loot_table
+  data/minecraft/    tags/block/mineable/pickaxe
 ```
 
-Текстуры — простые 16×16 спрайты, сгенерированные скриптом; смело заменяйте своими файлами
-в `assets/badhabits/textures/item/` — имена менять не надо.
+Лицензия: MIT. Автор: s4fmer.
