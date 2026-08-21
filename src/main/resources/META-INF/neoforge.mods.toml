@@ -8,9 +8,7 @@ version="${mod_version}"
 displayName="${mod_name}"
 authors="${mod_authors}"
 description='''
-Сигареты пяти видов, вымышленная синтетика, зависимость, ломка, передоз, детокс и кашель в чате.
-Вся логика серверная: без миксинов, без своих пакетов и без клиентских классов в общем коде,
-поэтому мод работает в обычном мультиплеере и на гибридных ядрах (Youer, Mohist, Arclight, Magma).
+mod created by s4fmer for sepiolSMP
 '''
 
 [[dependencies.${mod_id}]]
