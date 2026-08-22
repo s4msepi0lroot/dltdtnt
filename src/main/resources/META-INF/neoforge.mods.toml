@@ -8,10 +8,8 @@ version = "1.0.0"
 displayName = "BoozeCraft"
 authors = "s4fmer"
 description = '''
-Alcohol, soft drinks, energy drinks, coffee, glassware, three machines and a bar counter.
-Drinking gives short starter effects, then tipsy / drunk / heavy drunk stages, blackouts,
-hangovers and addiction. Server side logic only - works in multiplayer and on hybrid servers
-such as Youer, Mohist and Arclight.
+fuckin pivo i vodka yoo im russian
+created for sepiolSMP
 '''
 
 [[dependencies.boozecraft]]
