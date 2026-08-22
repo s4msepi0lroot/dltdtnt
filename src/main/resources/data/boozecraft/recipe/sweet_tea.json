@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "minecraft:dried_kelp"
+    },
+    {
+      "item": "minecraft:sugar"
+    },
+    {
+      "item": "boozecraft:mug"
+    },
+    {
+      "item": "boozecraft:mug"
+    },
+    {
+      "item": "minecraft:water_bucket"
+    }
+  ],
+  "result": {
+    "id": "boozecraft:sweet_tea",
+    "count": 2
+  }
+}

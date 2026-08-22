@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "boozecraft:coffee_beans"
+    },
+    {
+      "item": "boozecraft:coffee_beans"
+    },
+    {
+      "item": "boozecraft:shot_glass"
+    },
+    {
+      "item": "boozecraft:shot_glass"
+    },
+    {
+      "item": "minecraft:water_bucket"
+    }
+  ],
+  "result": {
+    "id": "boozecraft:espresso",
+    "count": 2
+  }
+}

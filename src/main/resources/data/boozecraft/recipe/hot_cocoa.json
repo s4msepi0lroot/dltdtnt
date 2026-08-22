@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "minecraft:cocoa_beans"
+    },
+    {
+      "item": "minecraft:milk_bucket"
+    },
+    {
+      "item": "minecraft:sugar"
+    },
+    {
+      "item": "boozecraft:mug"
+    },
+    {
+      "item": "boozecraft:mug"
+    }
+  ],
+  "result": {
+    "id": "boozecraft:hot_cocoa",
+    "count": 2
+  }
+}

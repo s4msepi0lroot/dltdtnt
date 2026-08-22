@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:smelting",
+  "category": "food",
+  "ingredient": {
+    "item": "minecraft:cocoa_beans"
+  },
+  "result": {
+    "id": "boozecraft:coffee_beans",
+    "count": 1
+  },
+  "experience": 0.1,
+  "cookingtime": 200
+}

@@ -1,25 +1,9 @@
-# Gradle
-.gradle/
 build/
-!gradle/wrapper/gradle-wrapper.jar
-
-# IDE
-.idea/
-*.iml
-*.ipr
-*.iws
-.vscode/
-.settings/
-.classpath
-.project
-
-# NeoForge / ModDevGradle
+.gradle/
+.gradle-dist/
 run/
 runs/
-runClient/
-runServer/
-logs/
-
-# OS
+*.iml
+.idea/
+.vscode/
 .DS_Store
-Thumbs.db

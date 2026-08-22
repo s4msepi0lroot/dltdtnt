@@ -1,7 +1,6 @@
 {
   "pack": {
-    "description": "${mod_name} resources",
-    "pack_format": 34,
-    "supported_formats": [15, 9999]
+    "description": "BoozeCraft resources",
+    "pack_format": 34
   }
 }

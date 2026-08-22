@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "SSS",
+    "PPP"
+  ],
+  "key": {
+    "S": {
+      "item": "minecraft:oak_slab"
+    },
+    "P": {
+      "item": "minecraft:oak_planks"
+    }
+  },
+  "result": {
+    "id": "boozecraft:bar_counter",
+    "count": 2
+  }
+}

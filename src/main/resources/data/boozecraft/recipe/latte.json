@@ -1,0 +1,22 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "boozecraft:coffee_beans"
+    },
+    {
+      "item": "minecraft:milk_bucket"
+    },
+    {
+      "item": "boozecraft:mug"
+    },
+    {
+      "item": "boozecraft:mug"
+    }
+  ],
+  "result": {
+    "id": "boozecraft:latte",
+    "count": 2
+  }
+}

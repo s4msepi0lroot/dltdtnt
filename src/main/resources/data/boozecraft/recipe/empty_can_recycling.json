@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:smelting",
+  "category": "food",
+  "ingredient": {
+    "item": "boozecraft:empty_can"
+  },
+  "result": {
+    "id": "minecraft:iron_nugget",
+    "count": 1
+  },
+  "experience": 0.05,
+  "cookingtime": 200
+}

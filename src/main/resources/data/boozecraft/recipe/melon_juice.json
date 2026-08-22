@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "minecraft:melon_slice"
+    },
+    {
+      "item": "minecraft:melon_slice"
+    },
+    {
+      "item": "minecraft:melon_slice"
+    },
+    {
+      "item": "boozecraft:glass_cup"
+    },
+    {
+      "item": "boozecraft:glass_cup"
+    }
+  ],
+  "result": {
+    "id": "boozecraft:melon_juice",
+    "count": 2
+  }
+}

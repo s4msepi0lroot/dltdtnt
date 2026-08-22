@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "boozecraft:soda_syrup"
+    },
+    {
+      "item": "minecraft:glow_berries"
+    },
+    {
+      "item": "boozecraft:empty_can"
+    },
+    {
+      "item": "boozecraft:empty_can"
+    },
+    {
+      "item": "minecraft:water_bucket"
+    }
+  ],
+  "result": {
+    "id": "boozecraft:lemon_lime_soda",
+    "count": 2
+  }
+}

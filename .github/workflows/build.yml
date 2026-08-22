@@ -1,8 +1,8 @@
-name: Build mod jar
+name: build
 
 on:
   push:
-  pull_request:
+    branches: [ "**" ]
   workflow_dispatch:
 
 jobs:
@@ -21,14 +21,14 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.12.1'
+          gradle-version: '8.12'
 
       - name: Build
-        run: gradle build --stacktrace --no-daemon
+        run: gradle build --no-daemon --stacktrace
 
       - name: Upload jar
         uses: actions/upload-artifact@v4
         with:
-          name: badhabits-jar
+          name: boozecraft-jar
           path: build/libs/*.jar
           if-no-files-found: error
