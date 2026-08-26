@@ -1,164 +1,51 @@
 # ============================================================
-#  SepiolFinale 0.1.0 - управляемый конец сезона sepiolSMP
-# ------------------------------------------------------------
-#  Плагин спит, пока его не позвали. Ничего не делает при
-#  старте сервера. Весь сценарий запускается вручную:
-#     /finale arm      -> получить одноразовый код
-#     /finale start XXXX -> начать финал
-#     /finale abort    -> откатить всё назад
-#
-#  Фазы идут по кругу: Знамения -> Разлом -> Схождение ->
-#  Пепел -> Тишина -> выключение сервера.
+#  SepiolCore - sepiolSMP Season 2
+#  Brick 1: web profiles served by the game server itself.
+#  Works exactly like Dynmap: own port, no external hosting.
 # ============================================================
 
-finale:
-  # Мир, который умирает. "auto" = первый мир сервера (обычно "world").
-  world: "auto"
-  # Точка, в которую сходится мир: "spawn" или координаты "x,z" (например "120,-340").
-  center: "spawn"
-  # Как называть сезон в сообщениях и в метке финала.
-  season-name: "Season II"
+season:
+  name: "Season II"
+  # ISO date, used by the web page to show "day N of the season"
+  start: "2026-09-01"
+  # planned end, purely informational
+  end: "2026-10-31"
+  world-border: 12000
 
-dry-run:
-  # Во сколько раз ускорить таймлайн в репетиции. 0.1 = месяц в минуту, то есть
-  # 600 секунд фазы превращаются в 60.
-  time-scale: 0.1
-  # В репетиции блоки НЕ ломаются, игроков не убивают, сервер не выключается.
-  destroy: false
-  kill: false
-  shutdown: false
+web:
+  enabled: true
+  # Dedicated port behind your domain, e.g. https://sepiolsmp.ru:8300 or a reverse proxy to /profile
+  port: 8300
+  # 0.0.0.0 = listen on all interfaces. Use 127.0.0.1 if nginx proxies it.
+  bind: "0.0.0.0"
+  # Public base URL, shown in chat by /sepiol profile
+  public-url: "http://localhost:8300"
+  # Threads for the embedded HTTP server
+  threads: 2
+  # Seconds a built profile is cached before it is rebuilt from disk
+  cache-seconds: 15
+  # Show coordinates of online players on the web page (usually a bad idea on a PvP season)
+  expose-coordinates: false
+  # Extra HTTP header for reverse proxy setups
+  cors-allow-origin: "*"
+  # Folder with player heads rendered by SepiolSkins (brick 2), served as /avatar/<nick>.
+  # "auto" = plugins/SepiolSkins/web/heads. No external avatar service is used.
+  avatar-dir: "auto"
 
-safety:
-  # Требовать одноразовый код (/finale arm), чтобы никто не запустил финал случайно.
-  require-code: true
-  code-ttl-seconds: 300
-  # Если сервер перезапустится посреди финала - продолжить с той же фазы.
-  # false = плагин просто сообщит в консоль и будет ждать твоей команды.
-  auto-resume-after-restart: false
-  # С фазы "Пепел" заблокировать игрокам команды (чтобы не убежали через /home, /spawn, /tpa).
-  block-commands-in-ash: true
-  allowed-commands: ["/msg", "/r", "/tell", "/finale"]
-  # Новых игроков, зашедших после смерти всех, сразу переводить в наблюдателя.
-  block-new-joins-in-ash: true
+integration:
+  # Auto = take the folder of the first loaded world. Override only if your layout is unusual.
+  level-root: "auto"
+  badhabits:
+    enabled: true
+    file: "badhabits/addiction.json"
+    # addiction meter maximum used for the progress bars (BhConfig addictionMax)
+    addiction-max: 100.0
+  boozecraft:
+    enabled: true
+    file: "boozecraft_players.json"
+    alcohol-cap: 100.0
+    addiction-max: 100.0
 
-phases:
-
-  # --- Фаза 1. Знамения. Мир ещё цел, но уже понятно, что всё кончено. ---
-  omens:
-    seconds: 600
-    announce-every: 120
-    # Остановить время суток и зафиксировать вечные сумерки (18000 = ночь).
-    freeze-time: 18000
-    storm: true
-    lightning-per-minute: 20
-    sound: "ambient.cave"
-    # Любые консольные команды. %player% подставляется для каждого игрока.
-    # Пример под наши моды: "badhabits set %player% narcotic 100"
-    commands: []
-
-  # --- Фаза 2. Разлом. Граница мира сжимается, лезет нежить, блоки гниют. ---
-  rift:
-    seconds: 600
-    announce-every: 120
-    border-target: 2000
-    border-shrink-seconds: 540
-    corrosion-per-second: 20
-    corrosion-radius: 128
-    corrosion-palette: ["CRYING_OBSIDIAN", "MAGMA_BLOCK", "NETHERRACK", "BLACKSTONE", "COBWEB", "SOUL_SAND"]
-    lightning-per-minute: 60
-    force-pvp: true
-    sound: "entity.ender_dragon.growl"
-    mob-waves:
-      enabled: true
-      every-seconds: 60
-      per-player: 4
-      radius: 24
-      types: ["ZOMBIE", "SKELETON", "HUSK", "STRAY", "PHANTOM", "WITHER_SKELETON"]
-    commands: []
-
-  # --- Фаза 3. Схождение. Мир физически исчезает. ---
-  convergence:
-    seconds: 600
-    announce-every: 60
-    border-target: 96
-    border-shrink-seconds: 480
-    # Игроков, оказавшихся далеко за границей, притягивать к центру.
-    pull-players: true
-    # Сколько блоков в секунду растворять. 400 - заметно, но сервер держит.
-    dissolve-per-second: 400
-    dissolve-radius: 96
-    dissolve-top-layers: 6
-    tnt-per-second: 2
-    explosions-per-second: 1
-    explosion-power: 3.0
-    set-fire: true
-    sound: "entity.wither.spawn"
-    commands: []
-
-  # --- Фаза 4. Пепел. Мира больше нет, остались только вы. ---
-  ash:
-    seconds: 300
-    announce-every: 30
-    # Смерть окончательна: респавна нет, мёртвые становятся наблюдателями.
-    no-respawn: true
-    damage-per-second: 1.0
-    # Через столько секунд добить всех, кто ещё жив (чтобы финал не завис).
-    kill-remaining-after: 120
-    sound: "entity.warden.heartbeat"
-    commands: []
-
-  # --- Фаза 5. Тишина. Итоги, снимок статистики, выключение. ---
-  silence:
-    seconds: 60
-    # Попросить SepiolCore заморозить финальную статистику для веб-профиля.
-    snapshot-via-sepiolcore: true
-    save-world: true
-    # Файл-метка в корне сервера. По ней внешний скрипт может стереть мир
-    # после выключения (см. scripts/after-finale.sh).
-    marker-file: "FINALE_DONE"
-    kick-players: true
-    shutdown: true
-    commands: []
-
-messages:
-  prefix: "&4[Финал]&r "
-  no-permission: "&cНе для тебя."
-  armed: "&eФинал заряжен. Код: &f%code%&e. Запуск: &f/finale start %code%&e. Код живёт %ttl% сек."
-  bad-code: "&cНеверный или просроченный код. Сначала &f/finale arm&c."
-  already-running: "&cФинал уже идёт. Фаза: &f%phase%&c."
-  not-running: "&cФинал не запущен."
-  aborted: "&aФинал остановлен, мир возвращён к прежним настройкам."
-  restored: "&aНастройки мира восстановлены из снимка."
-  dry-run-started: "&eРепетиция финала: время ускорено в %scale% раз, мир не пострадает."
-
-  resumed: "&eФинал продолжается с фазы &f%phase%&e."
-  phase-progress: "&7Фаза &f%phase%&7: до конца &f%time%"
-  pulled: "&4Тебя втянуло к центру схождения."
-  finished: "&7Сезон %season% закрыт. Сервер выключается."
-
-  omens-title: "&4Знамения"
-  omens-subtitle: "&7Небо больше не то же самое"
-  omens-chat: "&4Небо потемнело. Мир начал забывать себя."
-
-  rift-title: "&4Разлом"
-  rift-subtitle: "&7Границы мира сжимаются"
-  rift-chat: "&4Разлом открыт. Граница идёт на вас, и из неё лезет то, что должно было спать."
-
-  convergence-title: "&4Схождение"
-  convergence-subtitle: "&7Мир исчезает"
-  convergence-chat: "&4Схождение началось. Земля под ногами перестаёт существовать."
-
-  ash-title: "&4Пепел"
-  ash-subtitle: "&7Смерть окончательна"
-  ash-chat: "&4Мира больше нет. Осталось только вы, и это ненадолго. Возврата не будет."
-
-  silence-title: "&8Тишина"
-  silence-subtitle: "&7Сезон закрыт"
-  silence-chat: "&7Всё. Сезон %season% закончен. Спасибо, что были здесь."
-
-  death-broadcast: "&8%player% &7встретил конец. Осталось живых: &f%alive%&7."
-  you-are-dead: "&4Ты мёртв."
-  you-are-dead-sub: "&7Смотри, как гаснет мир"
-  joined-during-ash: "&7Ты пришёл слишком поздно. Сезон уже кончился."
-  commands-blocked: "&cОтсюда уже никуда."
-  countdown: "&4Выключение сервера через &f%seconds%&4..."
+leaderboards:
+  # how many players the web index shows
+  size: 25

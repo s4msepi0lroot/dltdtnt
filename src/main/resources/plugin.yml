@@ -1,18 +1,21 @@
-name: SepiolFinale
+name: SepiolCore
 version: '${version}'
-main: ru.sepiolsmp.finale.SepiolFinale
+main: ru.sepiolsmp.core.SepiolCore
 api-version: '1.21'
-authors: [sepiolSMP]
-description: Upravlyaemyy final sezona - 5 faz, unichtozhenie mira i avtomaticheskoe vyklyuchenie servera.
-softdepend: [SepiolCore, AuthMe, LuckPerms]
+authors: [s4fmer, NotionAI]
+description: sepiolSMP season 2 core. Brick 1 - self-hosted web profiles (Dynmap-style port) with Bad Habits and BoozeCraft integration.
+folia-supported: false
 
 commands:
-  finale:
-    description: Upravlenie finalom sezona.
-    usage: /finale help
-    aliases: [sepiolfinale, konec]
+  sepiol:
+    description: SepiolCore admin commands
+    usage: /sepiol <reload|web|profile [nick]>
+    permission: sepiolcore.admin
 
 permissions:
-  sepiolfinale.admin:
-    description: Polnyy dostup k komandam finala.
+  sepiolcore.admin:
+    description: Manage SepiolCore
     default: op
+  sepiolcore.profile:
+    description: Use /sepiol profile
+    default: true

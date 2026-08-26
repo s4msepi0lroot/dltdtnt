@@ -1,1 +1,1 @@
-rootProject.name = "SepiolFinale"
+rootProject.name = "SepiolCore"
