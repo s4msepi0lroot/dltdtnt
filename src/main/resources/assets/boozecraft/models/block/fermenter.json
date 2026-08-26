@@ -1,8 +1,0 @@
-{
-  "parent": "minecraft:block/cube_bottom_top",
-  "textures": {
-    "top": "boozecraft:block/fermenter_top",
-    "side": "boozecraft:block/fermenter_side",
-    "bottom": "boozecraft:block/fermenter_side"
-  }
-}

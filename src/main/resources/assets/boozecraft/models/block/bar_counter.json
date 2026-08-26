@@ -1,8 +1,0 @@
-{
-  "parent": "minecraft:block/cube_bottom_top",
-  "textures": {
-    "top": "boozecraft:block/bar_counter_top",
-    "side": "boozecraft:block/bar_counter_side",
-    "bottom": "boozecraft:block/bar_counter_side"
-  }
-}

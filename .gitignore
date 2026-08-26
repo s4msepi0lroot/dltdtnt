@@ -1,9 +1,0 @@
-build/
-.gradle/
-.gradle-dist/
-run/
-runs/
-*.iml
-.idea/
-.vscode/
-.DS_Store

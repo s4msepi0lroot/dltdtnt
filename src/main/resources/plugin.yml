@@ -1,0 +1,36 @@
+name: SepiolBlackMarket
+version: ${version}
+main: ru.sepiolsmp.blackmarket.SepiolBlackMarket
+api-version: '1.21'
+author: sepiolSMP
+description: "Чёрный рынок сезона: скрытый торговец, нелегальные лоты, розыск и конфискация."
+softdepend: [SepiolEconomy, SepiolCore, Vault, VaultUnlocked, LuckPerms, AuthMe]
+
+commands:
+  blackmarket:
+    description: "Чёрный рынок сезона"
+    aliases: [bm, rynok]
+    usage: "/bm info|find|where|shop"
+
+permissions:
+  sepiolblackmarket.use:
+    description: "Доступ к торговцу и витрине"
+    default: true
+  sepiolblackmarket.buy:
+    description: "Покупка лотов"
+    default: true
+  sepiolblackmarket.find:
+    description: "Покупка координат торговца"
+    default: true
+  sepiolblackmarket.staff:
+    description: "Оповещения стаффа о контрабанде"
+    default: op
+  sepiolblackmarket.scan:
+    description: "Досмотр игрока"
+    default: op
+  sepiolblackmarket.raid:
+    description: "Конфискация контрабанды"
+    default: op
+  sepiolblackmarket.admin:
+    description: "Управление торговцем и конфигом"
+    default: op

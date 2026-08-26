@@ -1,0 +1,711 @@
+# ============================================================
+#  SepiolBlackMarket 0.1.0 - чёрный рынок сезона sepiolSMP
+#  Деньги берутся из SepiolEconomy (или любой Vault-экономики).
+#  Логика: раз в сутки в случайной точке мира встаёт торговец.
+#  Координаты - товар. Спустя reveal-after-hours адрес сливается всем.
+# ============================================================
+
+economy:
+  # auto | sepiol | vault | none
+  mode: auto
+  decimals: 2
+  currency:
+    singular: "сепиол"
+    few: "сепиола"
+    many: "сепиолов"
+
+trader:
+  enabled: true
+  # "auto" = первый мир сервера
+  world: "auto"
+  # радиус появления от центра мира (граница сезона 12000 = +-6000)
+  radius: 5200
+  # не ближе чем так к спавну
+  min-distance: 900
+  # как часто приезжает
+  interval-hours: 24
+  # сколько стоит на одном месте
+  stay-hours: 20
+  # первый завоз после старта сервера
+  first-delay-minutes: 15
+  # через сколько часов координаты станут публичными (0 = никогда)
+  reveal-after-hours: 6
+  # цена адреса
+  coords-price: 150.0
+  # на каком расстоянии открывается витрина
+  interaction-radius: 6.0
+  # true = можно торговать из любой точки мира (выключено: надо идти)
+  remote-shop: false
+  announce-arrival: true
+  announce-departure: true
+  announce-reveal: true
+  name: "&5Барыга &8| &7чёрный рынок"
+  # сущность-носитель (WANDERING_TRADER, VILLAGER, ZOMBIE_VILLAGER, ...)
+  entity: WANDERING_TRADER
+  # новый завоз товара при каждом приезде
+  restock-on-arrival: true
+  # точка только на твёрдом блоке, без воды и лавы
+  safe-blocks-only: true
+  # атмосфера рядом с телегой
+  effects: true
+  particle: WITCH
+  sound-open: "entity.wandering_trader.yes"
+  sound-buy: "entity.experience_orb.pickup"
+  sound-deny: "entity.villager.no"
+
+prices:
+  # на сколько процентов растёт цена лота за каждую покупку
+  step-percent: 6.0
+  # потолок цены (x от базы)
+  max-factor: 4.0
+  # спрос остывает вдвое за столько часов
+  half-life-hours: 24
+  # при завозе спрос умножается на это
+  restock-cooldown: 0.5
+  # задержка между покупками, секунд
+  buy-cooldown-seconds: 2
+
+wanted:
+  enabled: true
+  # базовый срок розыска
+  minutes: 30
+  # плюс за каждый предмет контрабанды при досмотре
+  per-item-minutes: 2
+  max-minutes: 180
+  # розыск виден всем: светящийся силуэт
+  glow: true
+  announce: true
+  # true = о розыске знает только стафф
+  staff-only-announce: false
+  # смерть не снимает розыск
+  keep-on-death: true
+
+scan:
+  # автоматический досмотр в зонах досмотра
+  enabled: true
+  interval-seconds: 20
+  # зона вокруг спавна мира
+  use-world-spawn: true
+  radius: 120
+  # дополнительные зоны: "мир:x:z:радиус"
+  zones: []
+  auto-wanted: true
+  # тащить контрабанду сразу при автодосмотре (грубо, по умолчанию нет)
+  confiscate: false
+  notify-staff: true
+  # кого не трогать
+  bypass-permission: "sepiolblackmarket.staff"
+
+raid:
+  # /bm raid <ник>
+  confiscate: true
+  wanted-minutes: 45
+  announce: true
+
+storage:
+  save-interval-seconds: 120
+  # журнал сделок: deals/<дата>.jsonl
+  deals: true
+  deals-dir: "deals"
+
+web:
+  export: true
+  file: "web/blackmarket.json"
+  interval-seconds: 60
+  # НИКОГДА не включай на публичном профиле: слив координат
+  expose-coordinates: false
+  wanted-list: true
+
+# Что считается контрабандой при досмотре и конфискации.
+# Маска * работает в конце идентификатора. Кроме этого всё, что куплено
+# на рынке с флагом contraband, помечается скрытой меткой и тоже ловится.
+contraband:
+  - "badhabits:cig_*"
+  - "badhabits:pill_*"
+  - "badhabits:serum_*"
+  - "badhabits:void_dust"
+  - "badhabits:dream_joint"
+  - "badhabits:crystal_base"
+  - "badhabits:raw_batch"
+  - "badhabits:chem_reagent"
+  - "badhabits:syringe"
+  - "badhabits:synth_lab"
+  - "badhabits:elixir_titan"
+  - "boozecraft:moonshine"
+  - "boozecraft:everclear"
+  - "boozecraft:absinthe"
+  - "boozecraft:dragon_absinthe"
+  - "boozecraft:dirty_swill"
+  - "boozecraft:still"
+
+# ============================================================
+#  АССОРТИМЕНТ
+#  base    - базовая цена за одну покупку
+#  qty     - сколько предметов выдаётся за покупку
+#  stock   - сколько раз лот можно купить за один завоз (-1 = без лимита)
+#  item    - ванильный предмет (выдаётся напрямую, можно пометить)
+#  commands- выдача модовых предметов от консоли (%player%, %qty%)
+#  effect  - спецэффект: clear-wanted
+#  step    - личный шаг цены, перебивает prices.step-percent
+# ============================================================
+lots:
+
+  # ---------- дурь и аптека (BadHabits) ----------
+  cig_black:
+    name: "&7Пачка чёрных сигарет"
+    category: "Дурь"
+    base: 45.0
+    qty: 8
+    stock: 6
+    icon: PAPER
+    contraband: true
+    commands:
+      - "minecraft:give %player% badhabits:cig_black %qty%"
+    lore:
+      - "&8Без акциза, без вопросов"
+
+  cig_clove:
+    name: "&7Гвоздичные сигареты"
+    category: "Дурь"
+    base: 65.0
+    qty: 8
+    stock: 4
+    icon: PAPER
+    contraband: true
+    commands:
+      - "minecraft:give %player% badhabits:cig_clove %qty%"
+
+  pill_euphorin:
+    name: "&dЭйфорин"
+    category: "Дурь"
+    base: 190.0
+    qty: 2
+    stock: 3
+    icon: SUGAR
+    contraband: true
+    commands:
+      - "minecraft:give %player% badhabits:pill_euphorin %qty%"
+    lore:
+      - "&8Потом будет страшно, но сейчас хорошо"
+
+  pill_calmex:
+    name: "&bКалмекс"
+    category: "Дурь"
+    base: 130.0
+    qty: 2
+    stock: 4
+    icon: SUGAR
+    contraband: true
+    commands:
+      - "minecraft:give %player% badhabits:pill_calmex %qty%"
+
+  serum_neurolite:
+    name: "&5Нейролит"
+    category: "Дурь"
+    base: 420.0
+    qty: 1
+    stock: 2
+    icon: GLASS_BOTTLE
+    contraband: true
+    commands:
+      - "minecraft:give %player% badhabits:serum_neurolite %qty%"
+    lore:
+      - "&8Одна доза - и ты уже не ты"
+
+  serum_microdose:
+    name: "&5Микродоза"
+    category: "Дурь"
+    base: 260.0
+    qty: 1
+    stock: 2
+    icon: GLASS_BOTTLE
+    contraband: true
+    commands:
+      - "minecraft:give %player% badhabits:serum_microdose %qty%"
+
+  void_dust:
+    name: "&8Пыль Бездны"
+    category: "Дурь"
+    base: 560.0
+    qty: 1
+    stock: 2
+    icon: GUNPOWDER
+    contraband: true
+    commands:
+      - "minecraft:give %player% badhabits:void_dust %qty%"
+    lore:
+      - "&8С того света везли не для тебя"
+
+  dream_joint:
+    name: "&aСны наяву"
+    category: "Дурь"
+    base: 250.0
+    qty: 2
+    stock: 3
+    icon: DRIED_KELP
+    contraband: true
+    commands:
+      - "minecraft:give %player% badhabits:dream_joint %qty%"
+
+  crystal_base:
+    name: "&fКристаллическая основа"
+    category: "Сырьё"
+    base: 300.0
+    qty: 4
+    stock: 3
+    icon: AMETHYST_SHARD
+    contraband: true
+    commands:
+      - "minecraft:give %player% badhabits:crystal_base %qty%"
+    lore:
+      - "&8Для тех, кто варит сам"
+
+  raw_batch:
+    name: "&eСырая партия"
+    category: "Сырьё"
+    base: 210.0
+    qty: 4
+    stock: 4
+    icon: BROWN_DYE
+    contraband: true
+    commands:
+      - "minecraft:give %player% badhabits:raw_batch %qty%"
+
+  chem_reagent:
+    name: "&2Химический реагент"
+    category: "Сырьё"
+    base: 85.0
+    qty: 8
+    stock: 8
+    icon: LIME_DYE
+    contraband: true
+    commands:
+      - "minecraft:give %player% badhabits:chem_reagent %qty%"
+
+  synth_lab:
+    name: "&4Подпольная лаборатория"
+    category: "Оборудование"
+    base: 1600.0
+    qty: 1
+    stock: 1
+    step: 25.0
+    icon: BREWING_STAND
+    contraband: true
+    commands:
+      - "minecraft:give %player% badhabits:synth_lab %qty%"
+    lore:
+      - "&8Поставь подальше от спавна"
+      - "&8За такое стафф приходит лично"
+
+  syringe_kit:
+    name: "&fНабор шприцов"
+    category: "Сырьё"
+    base: 40.0
+    qty: 8
+    stock: 6
+    icon: IRON_NUGGET
+    contraband: true
+    commands:
+      - "minecraft:give %player% badhabits:syringe %qty%"
+
+  elixir_titan:
+    name: "&6Эликсир титана"
+    category: "Допинг"
+    base: 320.0
+    qty: 1
+    stock: 2
+    icon: GOLDEN_APPLE
+    contraband: true
+    commands:
+      - "minecraft:give %player% badhabits:elixir_titan %qty%"
+    lore:
+      - "&8На PvP-турнирах запрещён"
+
+  inhaler_ozon:
+    name: "&bИнгалятор Озон"
+    category: "Допинг"
+    base: 150.0
+    qty: 2
+    stock: 3
+    icon: GLASS_BOTTLE
+    contraband: false
+    commands:
+      - "minecraft:give %player% badhabits:inhaler_ozon %qty%"
+
+  detox_tonic:
+    name: "&aДетокс-тоник"
+    category: "Аптека"
+    base: 95.0
+    qty: 2
+    stock: 4
+    icon: HONEY_BOTTLE
+    contraband: false
+    commands:
+      - "minecraft:give %player% badhabits:detox_tonic %qty%"
+    lore:
+      - "&8Легально. Но дорого"
+
+  # ---------- алкоголь без лицензии (BoozeCraft) ----------
+  moonshine_crate:
+    name: "&fЯщик самогона"
+    category: "Алкоголь"
+    base: 120.0
+    qty: 8
+    stock: 5
+    icon: GLASS_BOTTLE
+    contraband: true
+    commands:
+      - "minecraft:give %player% boozecraft:moonshine %qty%"
+    lore:
+      - "&8Гнали в пещере, клейма нет"
+
+  everclear:
+    name: "&fСпирт 95%"
+    category: "Алкоголь"
+    base: 220.0
+    qty: 4
+    stock: 3
+    icon: POTION
+    contraband: true
+    commands:
+      - "minecraft:give %player% boozecraft:everclear %qty%"
+
+  absinthe:
+    name: "&aАбсент"
+    category: "Алкоголь"
+    base: 260.0
+    qty: 3
+    stock: 3
+    icon: POTION
+    contraband: true
+    commands:
+      - "minecraft:give %player% boozecraft:absinthe %qty%"
+
+  dragon_absinthe:
+    name: "&5Драконий абсент"
+    category: "Алкоголь"
+    base: 700.0
+    qty: 2
+    stock: 1
+    step: 15.0
+    icon: DRAGON_BREATH
+    contraband: true
+    commands:
+      - "minecraft:give %player% boozecraft:dragon_absinthe %qty%"
+    lore:
+      - "&8После третьей рюмки мир говорит с тобой"
+
+  dirty_swill:
+    name: "&8Грязное пойло"
+    category: "Алкоголь"
+    base: 55.0
+    qty: 6
+    stock: 6
+    icon: BROWN_DYE
+    contraband: true
+    commands:
+      - "minecraft:give %player% boozecraft:dirty_swill %qty%"
+
+  nether_whiskey:
+    name: "&cНезерский виски"
+    category: "Алкоголь"
+    base: 340.0
+    qty: 3
+    stock: 2
+    icon: BLAZE_POWDER
+    contraband: false
+    commands:
+      - "minecraft:give %player% boozecraft:nether_whiskey %qty%"
+
+  still_illegal:
+    name: "&6Самогонный аппарат без клейма"
+    category: "Оборудование"
+    base: 900.0
+    qty: 1
+    stock: 1
+    step: 20.0
+    icon: CAULDRON
+    contraband: true
+    commands:
+      - "minecraft:give %player% boozecraft:still %qty%"
+    lore:
+      - "&8Номера стёрты напильником"
+
+  yeast_sack:
+    name: "&eМешок дрожжей"
+    category: "Сырьё"
+    base: 60.0
+    qty: 16
+    stock: 6
+    icon: WHEAT_SEEDS
+    contraband: false
+    commands:
+      - "minecraft:give %player% boozecraft:yeast %qty%"
+
+  forged_license:
+    name: "&6Поддельная лицензия таверны"
+    category: "Бумаги"
+    base: 500.0
+    qty: 1
+    stock: 2
+    icon: PAPER
+    item: "minecraft:paper"
+    contraband: true
+    lore:
+      - "&7Выглядит как настоящая"
+      - "&8Печать нарисована от руки"
+
+  # ---------- краденое ----------
+  stolen_relic_shard:
+    name: "&5Осколок краденой реликвии"
+    category: "Краденое"
+    base: 950.0
+    qty: 1
+    stock: 1
+    step: 20.0
+    icon: ECHO_SHARD
+    item: "minecraft:echo_shard"
+    contraband: true
+    lore:
+      - "&7Отколот от вещи первого сезона"
+      - "&8Хозяин ещё ищет"
+
+  stolen_elytra:
+    name: "&fЭлитра со снятыми номерами"
+    category: "Краденое"
+    base: 2400.0
+    qty: 1
+    stock: 1
+    step: 30.0
+    icon: ELYTRA
+    item: "minecraft:elytra"
+    contraband: true
+
+  stolen_totem:
+    name: "&eТотем из чужого схрона"
+    category: "Краденое"
+    base: 750.0
+    qty: 1
+    stock: 2
+    icon: TOTEM_OF_UNDYING
+    item: "minecraft:totem_of_undying"
+    contraband: true
+
+  stolen_apple:
+    name: "&dКраденое зачарованное яблоко"
+    category: "Краденое"
+    base: 380.0
+    qty: 1
+    stock: 3
+    icon: ENCHANTED_GOLDEN_APPLE
+    item: "minecraft:enchanted_golden_apple"
+    contraband: true
+
+  stolen_template:
+    name: "&8Незеритовый шаблон без клейма"
+    category: "Краденое"
+    base: 640.0
+    qty: 1
+    stock: 2
+    icon: NETHERITE_UPGRADE_SMITHING_TEMPLATE
+    item: "minecraft:netherite_upgrade_smithing_template"
+    contraband: true
+
+  stolen_key:
+    name: "&7Краденый ключ испытаний"
+    category: "Краденое"
+    base: 240.0
+    qty: 2
+    stock: 4
+    icon: TRIAL_KEY
+    item: "minecraft:trial_key"
+    contraband: true
+
+  ominous_key:
+    name: "&5Дурной ключ"
+    category: "Краденое"
+    base: 420.0
+    qty: 1
+    stock: 2
+    icon: OMINOUS_TRIAL_KEY
+    item: "minecraft:ominous_trial_key"
+    contraband: true
+
+  city_map:
+    name: "&3Карта древнего города"
+    category: "Бумаги"
+    base: 330.0
+    qty: 1
+    stock: 3
+    icon: FILLED_MAP
+    item: "minecraft:filled_map"
+    contraband: false
+    lore:
+      - "&7Кто-то уже там был и не вернулся"
+
+  siege_blueprint:
+    name: "&cЧертёж осадной машины"
+    category: "Бумаги"
+    base: 780.0
+    qty: 1
+    stock: 2
+    step: 15.0
+    icon: PAPER
+    item: "minecraft:paper"
+    contraband: true
+    lore:
+      - "&7Понадобится, когда начнутся войны"
+
+  smuggled_beacon:
+    name: "&bМаяк из контейнера"
+    category: "Краденое"
+    base: 1500.0
+    qty: 1
+    stock: 1
+    step: 25.0
+    icon: BEACON
+    item: "minecraft:beacon"
+    contraband: true
+
+  dragon_egg:
+    name: "&5Яйцо дракона"
+    category: "Краденое"
+    base: 6000.0
+    qty: 1
+    stock: 1
+    step: 50.0
+    icon: DRAGON_EGG
+    item: "minecraft:dragon_egg"
+    contraband: true
+    lore:
+      - "&8Не спрашивай, откуда"
+
+  clean_papers:
+    name: "&aЧистая биография"
+    category: "Услуги"
+    base: 900.0
+    qty: 1
+    stock: 1
+    step: 40.0
+    icon: WRITABLE_BOOK
+    contraband: false
+    effect: "clear-wanted"
+    lore:
+      - "&7Снимает розыск сразу после покупки"
+      - "&8Писарь больше не берёт в долг"
+
+# ============================================================
+#  СООБЩЕНИЯ
+# ============================================================
+messages:
+  prefix: "&8[&5Рынок&8]&r "
+  no-permission: "&cНет прав"
+  player-only: "&cТолько в игре"
+  unknown-player: "&cИгрок &f%player% &cне найден"
+  invalid-number: "&cНужно число"
+  usage: "&7/bm info | find | where | shop | list"
+  economy-missing: "&cДеньги не подключены, рынок закрыт"
+  disabled: "&7Чёрный рынок выключен"
+
+  trader-absent: "&7Сейчас торговца нет. Следующий завоз через &f%next%"
+  trader-present: "&7Торговец в мире, уедет через &f%left%&7. Адрес: &f%price%"
+  trader-known: "&7Ты знаешь адрес: &f%coords%"
+  trader-arrived: "&5Кто-то разгрузил телегу в глуши. Адрес продаётся: &f/bm find &7(%price%)"
+  trader-revealed: "&5Слухи разошлись: торговец стоит на &f%coords%"
+  trader-left: "&8Телега уехала. Следующий завоз через &f%next%"
+  trader-no-place: "&cНе нашёл место для торговца, попробуй ещё раз"
+
+  coords-bought: "&aАдрес куплен: &f%coords% &7(списано %amount%)"
+  coords-already: "&7Ты уже платил. Адрес: &f%coords%"
+  coords-free: "&7Адрес уже слили бесплатно: &f%coords%"
+  coords-not-enough: "&cНужно %amount%, у тебя %balance%"
+  coords-none: "&7Продавать нечего: торговца в мире нет"
+  coords-unknown: "&7Ты не знаешь, где он. &f/bm find"
+
+  shop-too-far: "&cДо телеги надо дойти: ближе %radius% блоков"
+  shop-title: "&8Чёрный рынок &7(%page%/%pages%)"
+
+  buy-ok: "&aКуплено: &f%item% &7x%qty% &7за &f%amount%"
+  buy-not-enough: "&cНе хватает: нужно %amount%, есть %balance%"
+  buy-sold-out: "&cЛот распродан до следующего завоза"
+  buy-cooldown: "&7Не торопись: ещё %seconds% сек"
+  buy-full: "&eИнвентарь полный, часть товара лежит на земле"
+  buy-failed: "&cСделка не прошла, деньги вернули"
+  buy-unknown-lot: "&cТакого лота нет"
+  buy-price-up: "&8Цена лота выросла до &7%price%"
+
+  list-header: "&8Ассортимент &7(%page%/%pages%)"
+  list-line: "&8- &f%name% &7за &f%price% &8(осталось %left%)"
+  list-footer: "&8Следующая страница: &7/bm list %next%"
+  list-empty: "&7Ассортимент пуст"
+
+  info-header: "&8Чёрный рынок"
+  info-line: "&8- &7%label%: &f%value%"
+  info-labels:
+    here: "&aна карте"
+    away: "&7уехал"
+    hidden: "&8скрыто, купи адрес"
+    trader: "Барыга"
+    next: "Следующий завоз"
+    left: "Уедет через"
+    lots: "Лотов в обороте"
+    wanted: "В розыске"
+    economy: "Экономика"
+    balance: "Твой баланс"
+    coords: "Координаты"
+
+  wanted-set: "&cТы в розыске на &f%minutes% мин&c. Тебя видно издалека"
+  wanted-clear: "&aРозыск снят"
+  wanted-expired: "&7Розыск истёк. Светиться больше не будешь"
+  wanted-none: "&7За тобой ничего нет"
+  wanted-self: "&cТы в розыске ещё &f%left%"
+  wanted-broadcast: "&c%player% попался с контрабандой &8(%count% шт.)"
+  wanted-list-header: "&8В розыске: &f%count%"
+  wanted-list-line: "&8- &f%player% &7ещё %left%"
+  wanted-list-empty: "&7В розыске никого"
+
+  scan-clean: "&a%player%: чисто"
+  scan-dirty: "&c%player%: контрабанда, %count% шт."
+  scan-victim: "&cДосмотр: у тебя нашли запрещённое &8(%count% шт.)"
+  scan-zone-warning: "&cЗдесь досматривают. С таким грузом лучше не ходить"
+
+  raid-done: "&aКонфисковано у &f%player%&a: %count% шт."
+  raid-clean: "&7У &f%player% &7изымать нечего"
+  raid-victim: "&cОблава: контрабанду изъяли &8(%count% шт.)"
+  raid-broadcast: "&cОблава у &f%player%&c: изъято %count% шт."
+
+  clean-papers-used: "&aБиография чиста, розыск снят"
+
+  admin-spawned: "&aТорговец поставлен: &f%coords%"
+  admin-despawned: "&aТорговец убран"
+  admin-restocked: "&aНовый завоз: лотов &f%count%"
+  admin-reloaded: "&aКонфиг перечитан, лотов &f%count%"
+  admin-cleared: "&aРозыск снят с &f%player%"
+  admin-exported: "&aФайл для профиля обновлён"
+
+  gui-price: "&7Цена: &f%price%"
+  gui-base: "&8База: %base%"
+  gui-qty: "&7Выдаст: &f%qty% шт."
+  gui-left: "&7Осталось: &f%left%"
+  gui-unlimited: "&7Осталось: &fбез лимита"
+  gui-contraband: "&4КОНТРАБАНДА"
+  gui-legal: "&2Легально"
+  gui-hint-buy: "&8ЛКМ - купить"
+  gui-sold-out: "&cРаспродано"
+  gui-nav-prev: "&7Назад"
+  gui-nav-next: "&7Дальше"
+  gui-info-name: "&5Чёрный рынок"
+  gui-info-balance: "&7Баланс: &f%balance%"
+  gui-info-left: "&7Торговец уедет через: &f%left%"
+  gui-info-wanted: "&cРозыск: &f%left%"
+
+  help:
+    - "&8&m----&r &5Чёрный рынок &8&m----"
+    - "&f/bm info &8- есть ли торговец и сколько стоит адрес"
+    - "&f/bm find &8- купить координаты"
+    - "&f/bm where &8- напомнить адрес"
+    - "&f/bm shop &8- витрина (рядом с торговцем)"
+    - "&f/bm list [стр] &8- ассортимент текстом"
+    - "&f/bm wanted &8- твой розыск"
+    - "&8Стафф: &7/bm scan <ник> | raid <ник> | clear <ник>"
+    - "&8Админ: &7/bm spawn | despawn | restock | reload | export"
