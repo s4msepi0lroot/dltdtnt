@@ -1,27 +1,39 @@
-name: SepiolSkins
-version: 0.1.0
-main: ru.sepiolsmp.skins.SepiolSkins
+name: SepiolEconomy
+version: '${version}'
+main: ru.sepiolsmp.economy.SepiolEconomy
 api-version: '1.21'
-author: sepiolSMP
-description: Universal skins for licensed and cracked players (Mojang -> Ely.by -> MineSkin) + local avatars for the web profile
-softdepend:
-  - AuthMe
-  - SkinsRestorer
-  - SepiolCore
+authors: [sepiolSMP]
+description: "Экономика сезона sepiolSMP: банк с плавающим курсом, кошельки, переводы с комиссией"
+softdepend: [Vault, VaultUnlocked, SepiolCore, SepiolSkins, LuckPerms, AuthMe]
 commands:
-  skin:
-    description: Skin management
-    usage: /skin help
-    aliases:
-      - sskin
-      - skins
+  balance:
+    description: "Баланс игрока"
+    aliases: [bal, money]
+    usage: "/balance [ник]"
+  pay:
+    description: "Перевод другому игроку"
+    usage: "/pay <ник> <сумма>"
+  bank:
+    description: "Банк сезона: курс и сдача ресурсов"
+    aliases: [course, kurs]
+    usage: "/bank [quote|sell|list|info|top]"
+  seco:
+    description: "Админ-команды экономики"
+    aliases: [sepioleconomy]
+    usage: "/seco <give|take|set|treasury|market|reload|info>"
 permissions:
-  sepiolskins.use:
-    description: Use /skin for yourself
+  sepioleconomy.use:
+    description: "Базовый доступ к экономике"
     default: true
-  sepiolskins.other:
-    description: Manage skins of other players
+  sepioleconomy.balance.other:
+    description: "Смотреть баланс других игроков"
     default: op
-  sepiolskins.admin:
-    description: Reload, purge cache, force refresh
+  sepioleconomy.pay:
+    description: "Переводы другим игрокам"
+    default: true
+  sepioleconomy.bank:
+    description: "Сдача ресурсов в банк сезона"
+    default: true
+  sepioleconomy.admin:
+    description: "Управление экономикой"
     default: op

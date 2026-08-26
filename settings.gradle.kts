@@ -1,1 +1,1 @@
-rootProject.name = "SepiolSkins"
+rootProject.name = "sepioleconomy"
