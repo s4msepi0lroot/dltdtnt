@@ -1,51 +1,75 @@
 # ============================================================
-#  SepiolCore - sepiolSMP Season 2
-#  Brick 1: web profiles served by the game server itself.
-#  Works exactly like Dynmap: own port, no external hosting.
+#  SepiolSkins - sepiolSMP Season 2
+#  Brick 2: everybody has a skin, no matter which launcher.
+#
+#  Why this plugin exists: AuthMe needs online-mode=false, and
+#  with online-mode=false Mojang does not hand textures to the
+#  server anymore. So the server resolves them itself and
+#  injects the "textures" property into the login profile.
+#  Result: every client sees every skin, licensed or not.
 # ============================================================
 
-season:
-  name: "Season II"
-  # ISO date, used by the web page to show "day N of the season"
-  start: "2026-09-01"
-  # planned end, purely informational
-  end: "2026-10-31"
-  world-border: 12000
+resolve:
+  # Order matters. Allowed: mojang, elyby
+  priority:
+    - mojang
+    - elyby
+  # How long a resolved skin is trusted before we look for updates (hours)
+  refresh-hours: 24
+  # How long we remember "this nick has no skin anywhere" (minutes)
+  negative-cache-minutes: 90
+  # Hard budget for the login thread. If we are slower than this, the player
+  # joins with the cached skin (or default) and we refresh in the background.
+  login-timeout-seconds: 4
+  # Normal HTTP timeout for skin lookups
+  timeout-seconds: 6
+  # Refresh skins of players already online, without a relog, when possible
+  apply-live: true
 
-web:
+mojang:
   enabled: true
-  # Dedicated port behind your domain, e.g. https://sepiolsmp.ru:8300 or a reverse proxy to /profile
-  port: 8300
-  # 0.0.0.0 = listen on all interfaces. Use 127.0.0.1 if nginx proxies it.
-  bind: "0.0.0.0"
-  # Public base URL, shown in chat by /sepiol profile
-  public-url: "http://localhost:8300"
-  # Threads for the embedded HTTP server
-  threads: 2
-  # Seconds a built profile is cached before it is rebuilt from disk
-  cache-seconds: 15
-  # Show coordinates of online players on the web page (usually a bad idea on a PvP season)
-  expose-coordinates: false
-  # Extra HTTP header for reverse proxy setups
-  cors-allow-origin: "*"
-  # Folder with player heads rendered by SepiolSkins (brick 2), served as /avatar/<nick>.
-  # "auto" = plugins/SepiolSkins/web/heads. No external avatar service is used.
-  avatar-dir: "auto"
+  profile-endpoint: "https://api.mojang.com/users/profiles/minecraft/%s"
+  session-endpoint: "https://sessionserver.mojang.com/session/minecraft/profile/%s?unsigned=false"
 
-integration:
-  # Auto = take the folder of the first loaded world. Override only if your layout is unusual.
-  level-root: "auto"
-  badhabits:
-    enabled: true
-    file: "badhabits/addiction.json"
-    # addiction meter maximum used for the progress bars (BhConfig addictionMax)
-    addiction-max: 100.0
-  boozecraft:
-    enabled: true
-    file: "boozecraft_players.json"
-    alcohol-cap: 100.0
-    addiction-max: 100.0
+elyby:
+  enabled: true
+  # Nick -> Ely.by uuid
+  profile-endpoint: "https://authserver.ely.by/api/users/profiles/minecraft/%s"
+  # Raw skin/cape urls on the Ely.by CDN
+  textures-endpoint: "https://skinsystem.ely.by/textures/%s"
+  # Signed profile in Mojang format (signature is Ely.by's, not Mojang's)
+  signed-endpoint: "https://skinsystem.ely.by/textures/signed/%s?proxy=true"
+  # IMPORTANT: vanilla clients only accept skin urls hosted on *.minecraft.net,
+  # so an Ely.by url has to be re-uploaded through MineSkin to become visible
+  # for everyone. Keep this on unless every single player has a skin-loader mod.
+  reupload-through-mineskin: true
 
-leaderboards:
-  # how many players the web index shows
-  size: 25
+mineskin:
+  # Converts any png url into signed, Mojang-hosted textures
+  enabled: true
+  endpoint: "https://api.mineskin.org/generate/url"
+  # Optional key from https://mineskin.org - raises the rate limit
+  api-key: ""
+  timeout-seconds: 25
+  # Retry once if MineSkin answers 429 (rate limit), waiting no longer than this
+  max-wait-seconds: 20
+
+# Fallback textures used when nothing was found. Leave empty for vanilla Steve/Alex.
+default-skin:
+  value: ""
+  signature: ""
+
+files:
+  # Export skin png + 72x72 head png so SepiolCore can serve local avatars
+  # (plugins/SepiolSkins/web/skins, .../heads, .../textures)
+  export-web-assets: true
+  head-size: 72
+
+messages:
+  prefix: "&5[Skins]&r "
+  no-permission: "&cНет прав."
+  searching: "&7Ищу скин..."
+  applied: "&aСкин обновлён&7 (источник: %source%)"
+  relog: "&eСкин сохранён. Если не поменялся сразу — перезайди на сервер."
+  not-found: "&cСкин не найден ни на лицензии, ни на Ely.by."
+  cleared: "&aСкин сброшен на стандартный."

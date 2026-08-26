@@ -1,21 +1,27 @@
-name: SepiolCore
-version: '${version}'
-main: ru.sepiolsmp.core.SepiolCore
+name: SepiolSkins
+version: 0.1.0
+main: ru.sepiolsmp.skins.SepiolSkins
 api-version: '1.21'
-authors: [s4fmer, NotionAI]
-description: sepiolSMP season 2 core. Brick 1 - self-hosted web profiles (Dynmap-style port) with Bad Habits and BoozeCraft integration.
-folia-supported: false
-
+author: sepiolSMP
+description: Universal skins for licensed and cracked players (Mojang -> Ely.by -> MineSkin) + local avatars for the web profile
+softdepend:
+  - AuthMe
+  - SkinsRestorer
+  - SepiolCore
 commands:
-  sepiol:
-    description: SepiolCore admin commands
-    usage: /sepiol <reload|web|profile [nick]>
-    permission: sepiolcore.admin
-
+  skin:
+    description: Skin management
+    usage: /skin help
+    aliases:
+      - sskin
+      - skins
 permissions:
-  sepiolcore.admin:
-    description: Manage SepiolCore
-    default: op
-  sepiolcore.profile:
-    description: Use /sepiol profile
+  sepiolskins.use:
+    description: Use /skin for yourself
     default: true
+  sepiolskins.other:
+    description: Manage skins of other players
+    default: op
+  sepiolskins.admin:
+    description: Reload, purge cache, force refresh
+    default: op
