@@ -1,36 +1,18 @@
-name: SepiolBlackMarket
-version: ${version}
-main: ru.sepiolsmp.blackmarket.SepiolBlackMarket
+name: SepiolFinale
+version: '${version}'
+main: ru.sepiolsmp.finale.SepiolFinale
 api-version: '1.21'
-author: sepiolSMP
-description: "Чёрный рынок сезона: скрытый торговец, нелегальные лоты, розыск и конфискация."
-softdepend: [SepiolEconomy, SepiolCore, Vault, VaultUnlocked, LuckPerms, AuthMe]
+authors: [sepiolSMP]
+description: Upravlyaemyy final sezona - 5 faz, unichtozhenie mira i avtomaticheskoe vyklyuchenie servera.
+softdepend: [SepiolCore, AuthMe, LuckPerms]
 
 commands:
-  blackmarket:
-    description: "Чёрный рынок сезона"
-    aliases: [bm, rynok]
-    usage: "/bm info|find|where|shop"
+  finale:
+    description: Upravlenie finalom sezona.
+    usage: /finale help
+    aliases: [sepiolfinale, konec]
 
 permissions:
-  sepiolblackmarket.use:
-    description: "Доступ к торговцу и витрине"
-    default: true
-  sepiolblackmarket.buy:
-    description: "Покупка лотов"
-    default: true
-  sepiolblackmarket.find:
-    description: "Покупка координат торговца"
-    default: true
-  sepiolblackmarket.staff:
-    description: "Оповещения стаффа о контрабанде"
-    default: op
-  sepiolblackmarket.scan:
-    description: "Досмотр игрока"
-    default: op
-  sepiolblackmarket.raid:
-    description: "Конфискация контрабанды"
-    default: op
-  sepiolblackmarket.admin:
-    description: "Управление торговцем и конфигом"
+  sepiolfinale.admin:
+    description: Polnyy dostup k komandam finala.
     default: op

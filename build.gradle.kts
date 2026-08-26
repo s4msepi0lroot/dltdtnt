@@ -15,10 +15,12 @@ dependencies {
 }
 
 java {
-	toolchain.languageVersion.set(JavaLanguageVersion.of(21))
+	toolchain {
+		languageVersion.set(JavaLanguageVersion.of(21))
+	}
 }
 
-tasks.withType<JavaCompile> {
+tasks.withType<JavaCompile>().configureEach {
 	options.encoding = "UTF-8"
 	options.release.set(21)
 }
@@ -30,5 +32,5 @@ tasks.processResources {
 }
 
 tasks.jar {
-	archiveBaseName.set("SepiolBlackMarket")
+	archiveFileName.set("SepiolFinale-${project.version}.jar")
 }

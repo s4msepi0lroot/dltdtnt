@@ -1,1 +1,1 @@
-rootProject.name = "SepiolBlackMarket"
+rootProject.name = "SepiolFinale"
