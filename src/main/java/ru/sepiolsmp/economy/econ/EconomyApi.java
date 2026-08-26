@@ -24,7 +24,7 @@ public final class EconomyApi {
 
 	public enum SellStatus { OK, DISABLED, NOT_ACCEPTED, CONTRABAND, CUSTOM_ITEM, NOTHING, COOLDOWN }
 
-	public record PayResult(PayStatus status, double amount, double fee, long wait) {}
+	public record PayResult(PayStatus status, double amount, double fee, long waitSeconds) {}
 
 	public record SellResult(SellStatus status, String id, int qty, double total, boolean capped) {}
 

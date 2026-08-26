@@ -1,4 +1,8 @@
-# SepiolEconomy 0.1.0
+# SepiolEconomy 0.1.1
+
+> **0.1.1 — фикс сборки.** Компонент record `PayResult.wait` переименован в `waitSeconds`: имя `wait`
+> запрещено для компонентов record, потому что конфликтует с финальным методом `Object.wait()`,
+> из-за чего `result.wait()` компилятор считал вызовом `void`-метода. Логика не менялась.
 
 Валюта сезона «sepiolSMP» — **сепиол**. Кирпич № 4 сборки Season II (Youer 1.21.1 = Paper + NeoForge).
 
@@ -93,7 +97,7 @@ plugins/SepiolEconomy/
 ```bash
 gradle wrapper --gradle-version 8.12.1   # если нет ./gradlew
 ./gradlew build
-# build/libs/SepiolEconomy-0.1.0.jar
+# build/libs/SepiolEconomy-0.1.1.jar
 ```
 
 Любой push в GitHub собирает jar через Actions (артефакт `SepiolEconomy-jar`),

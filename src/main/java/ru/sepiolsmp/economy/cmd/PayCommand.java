@@ -74,7 +74,7 @@ public final class PayCommand implements CommandExecutor, TabCompleter {
 			case NOT_ENOUGH -> plugin.msg().send(player, "pay-not-enough",
 					"%need%", plugin.msg().money(result.amount() + result.fee()));
 			case COOLDOWN -> plugin.msg().send(player, "pay-cooldown",
-					"%seconds%", String.valueOf(result.wait()));
+					"%seconds%", String.valueOf(result.waitSeconds()));
 			case OFFLINE -> plugin.msg().send(player, "pay-offline");
 			case MAX_BALANCE -> plugin.msg().send(player, "pay-max-balance");
 			default -> plugin.msg().send(player, "unknown-player", "%player%", args[0]);
