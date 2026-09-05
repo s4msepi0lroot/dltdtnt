@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "tag": "minecraft:wool"
+    },
+    {
+      "item": "minecraft:string"
+    }
+  ],
+  "result": {
+    "id": "vitalstages:bandage",
+    "count": 4
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "item.vitalstages.bandage": "Бинт",
+  "vitalstages.unconscious": "Вы без сознания",
+  "vitalstages.rescue_window": "Помощь ещё возможна: не более %s с",
+  "vitalstages.vitals": "Кровь: %s%%  |  Сознание: %s%%",
+  "vitalstages.no_open_cut": "Нет открытых порезов для перевязки",
+  "vitalstages.bandaged": "Самая опасная открытая рана перевязана",
+  "death.attack.vitalstages.organ_failure": "%1$s не удалось спасти",
+  "death.attack.vitalstages.organ_failure.player": "%1$s не удалось спасти после боя с %2$s"
+}

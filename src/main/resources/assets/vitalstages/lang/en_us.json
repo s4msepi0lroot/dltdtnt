@@ -1,0 +1,10 @@
+{
+  "item.vitalstages.bandage": "Bandage",
+  "vitalstages.unconscious": "You are unconscious",
+  "vitalstages.rescue_window": "Rescue window: up to %s s remaining",
+  "vitalstages.vitals": "Blood: %s%%  |  Consciousness: %s%%",
+  "vitalstages.no_open_cut": "No open cuts to bandage",
+  "vitalstages.bandaged": "The most dangerous open cut has been bandaged",
+  "death.attack.vitalstages.organ_failure": "%1$s could not be saved",
+  "death.attack.vitalstages.organ_failure.player": "%1$s could not be saved after fighting %2$s"
+}
