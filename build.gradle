@@ -51,3 +51,20 @@ tasks.register('mvp2NbtTest', JavaExec) {
     mainClass = 'dev.vitalstages.health.Mvp2NbtTest'
 }
 check.dependsOn mvp2NbtTest
+
+// Тесты NBT используют те же Minecraft/NeoForge-зависимости,
+// что и основной код мода.
+sourceSets {
+    test {
+        compileClasspath += sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.runtimeClasspath
+    }
+}
+
+// Обновляем classpath и у наших JavaExec-задач.
+// Это важно не только для компиляции, но и для запуска NBT-теста.
+['physiologyTest', 'mvp2Test', 'mvp2NbtTest'].each { taskName ->
+    tasks.named(taskName) {
+        classpath = sourceSets.test.runtimeClasspath
+    }
+}
