@@ -17,11 +17,15 @@ public final class HealthConfig {
             FRACTURE_DAMAGE_THRESHOLD, INFECTION_HAZARD_PER_SECOND;
     public static final ModConfigSpec.IntValue DEATH_WINDOW_SECONDS, MINIMUM_DOWN_TICKS,
             SYNC_INTERVAL_TICKS, BANDAGE_COOLDOWN_TICKS, INFECTION_DELAY_SECONDS;
+    public static final ModConfigSpec.DoubleValue LEG_MOVEMENT_FACTOR, ARM_ATTACK_FACTOR,
+            ARM_MINING_FACTOR, HEAVY_FRACTURE_THRESHOLD, HEAVY_FRACTURE_CHANCE;
+    public static final ModConfigSpec.IntValue SPLINT_COOLDOWN_TICKS, BRUISE_HEAL_SECONDS,
+            CUT_HEAL_SECONDS, BURN_HEAL_SECONDS, FRACTURE_HEAL_SECONDS;
     static {
         ModConfigSpec.Builder b = new ModConfigSpec.Builder();
         b.push("systems");
         ENABLE_BLOOD_LOSS = b.define("enableBloodLoss", true);
-        ENABLE_FRACTURES = b.comment("Создание FRACTURE. Штрафы/шины вне MVP.").define("enableFractures", true);
+        ENABLE_FRACTURES = b.comment("Создание переломов и штрафы. Отключение не стирает раны/фиксацию.").define("enableFractures", true);
         ENABLE_DELIRIUM = b.comment("Виньетка; обязательный blackout не отключает.").define("enableDelirium", true);
         ENABLE_TEMPERATURE = b.comment("Штраф от сохранённой температуры. Климат вне MVP.").define("enableTemperature", false);
         ENABLE_INFECTION = b.comment("Только таймер и риск. Болезнь/антисептик вне MVP.").define("enableInfection", false);
@@ -57,6 +61,21 @@ public final class HealthConfig {
         BANDAGE_COOLDOWN_TICKS = b.defineInRange("bandageCooldownTicks", 30, 1, 200);
         INFECTION_DELAY_SECONDS = b.defineInRange("infectionDelaySeconds", 600, 1, 86400);
         INFECTION_HAZARD_PER_SECOND = b.defineInRange("infectionHazardPerSecond", 0.0001, 0, 1);
+        b.pop().push("fractures");
+        LEG_MOVEMENT_FACTOR = b.comment("Множитель на одну нефиксированную сломанную ногу.")
+                .defineInRange("movementPerLeg", 0.55, 0.05, 1.0);
+        ARM_ATTACK_FACTOR = b.defineInRange("attackSpeedPerArm", 0.65, 0.05, 1.0);
+        ARM_MINING_FACTOR = b.defineInRange("miningSpeedPerArm", 0.60, 0.05, 1.0);
+        HEAVY_FRACTURE_THRESHOLD = b.comment("Реальный урон HP после absorption для дополнительного перелома конечности.")
+                .defineInRange("heavyHitThreshold", 6.0, 0.1, 1000);
+        HEAVY_FRACTURE_CHANCE = b.defineInRange("heavyHitFractureChance", 0.35, 0, 1);
+        SPLINT_COOLDOWN_TICKS = b.defineInRange("splintCooldownTicks", 40, 1, 200);
+        b.pop().push("recovery");
+        BRUISE_HEAL_SECONDS = b.defineInRange("bruiseSeconds", 120, 5, 86400);
+        CUT_HEAL_SECONDS = b.comment("Только перевязанный CUT.").defineInRange("bandagedCutSeconds", 180, 5, 86400);
+        BURN_HEAL_SECONDS = b.defineInRange("burnSeconds", 300, 5, 86400);
+        FRACTURE_HEAL_SECONDS = b.comment("Для рук/ног нужна шина; фиксация снимает штраф сразу, кость заживает позже.")
+                .defineInRange("splintedFractureSeconds", 600, 5, 86400);
         b.pop(); SPEC = b.build();
     }
     private HealthConfig() {}

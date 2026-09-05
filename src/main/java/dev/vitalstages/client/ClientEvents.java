@@ -15,7 +15,7 @@ public final class ClientEvents {
     private static boolean cameraLocked;
     private static float lockedYaw, lockedPitch;
     private ClientEvents() {}
-    @SubscribeEvent public static void tick(ClientTickEvent.Post e) { ClientHealthState.tick(); }
+    @SubscribeEvent public static void tick(ClientTickEvent.Post e) { ClientHealthState.tick(); ClientKeys.tick(); }
     @SubscribeEvent public static void logout(ClientPlayerNetworkEvent.LoggingOut e) { ClientHealthState.clear(); cameraLocked = false; }
     @SubscribeEvent public static void login(ClientPlayerNetworkEvent.LoggingIn e) { ClientHealthState.clear(); cameraLocked = false; }
     @SubscribeEvent public static void movement(MovementInputUpdateEvent e) {

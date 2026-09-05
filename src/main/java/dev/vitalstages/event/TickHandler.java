@@ -31,6 +31,7 @@ public final class TickHandler {
         if (!DamageEventHandler.eligible(player)) {
             // Creative/spectator приостанавливают физиологию, но не стирают раны.
             data.updateControlLock(false);
+            FractureEffects.refresh(player);
             if (player.tickCount % HealthConfig.SYNC_INTERVAL_TICKS.get() == 0) HealthNetwork.sync(player);
             return;
         }
@@ -41,6 +42,16 @@ public final class TickHandler {
         Physiology.Result result = Physiology.step(data.physiologyState(), data.bleedingRate(), data.bodyTemperature(),
                 player.getFoodData().getFoodLevel(), HealthConfig.rules());
         data.accept(result.state());
+        boolean recovered = false;
+        if (!result.terminal()) {
+            boolean stable = !data.criticalTrauma() && (!HealthConfig.ENABLE_BLOOD_LOSS.get()
+                    || data.bloodLevel() > HealthConfig.f(HealthConfig.CRITICAL_BLOOD));
+            recovered = data.tickRecovery(stable, HealthConfig.BRUISE_HEAL_SECONDS.get() * 20,
+                    HealthConfig.CUT_HEAL_SECONDS.get() * 20, HealthConfig.BURN_HEAL_SECONDS.get() * 20,
+                    HealthConfig.FRACTURE_HEAL_SECONDS.get() * 20);
+            if (recovered) recomputeBleeding(data);
+        }
+        FractureEffects.refresh(player);
         boolean controlsChanged = data.updateControlLock(data.unconscious());
         if (data.unconscious()) {
             player.stopUsingItem(); player.setSprinting(false); player.setJumping(false); player.stopFallFlying();
@@ -51,7 +62,7 @@ public final class TickHandler {
         if (result.terminal()) {
             if (data.allowTerminalAttempt()) finishDeath(player, data);
         } else data.clearTerminalRetry();
-        if (player.isAlive() && (controlsChanged || player.tickCount % HealthConfig.SYNC_INTERVAL_TICKS.get() == 0))
+        if (player.isAlive() && (controlsChanged || recovered || player.tickCount % HealthConfig.SYNC_INTERVAL_TICKS.get() == 0))
             HealthNetwork.sync(player);
     }
     private static void finishDeath(ServerPlayer player, PlayerHealthData data) {

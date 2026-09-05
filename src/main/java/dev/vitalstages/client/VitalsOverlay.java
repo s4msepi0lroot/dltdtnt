@@ -27,7 +27,6 @@ public final class VitalsOverlay {
             int left = bx * i / 32, right = bx * (i + 1) / 32;
             gui.fill(left, 0, right, h, a << 24); gui.fill(w - right, 0, w - left, h, a << 24);
         }
-        if (!mc.options.hideGui) gui.drawString(mc.font, Component.translatable("vitalstages.vitals",
-                Math.round(p.blood()), Math.round(p.consciousness())), 8, 8, 0xFFE8E8E8);
+        AnatomyHud.render(gui, p);
     }
 }

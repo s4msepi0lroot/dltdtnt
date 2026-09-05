@@ -1,10 +1,8 @@
-# Vital Stages — полный код MVP
+# Vital Stages 0.2.0 — полный код MVP-2
 
-Minecraft 1.21.1 / NeoForge 21.1.233 / Java 21. Код ниже совпадает с файлами проекта. Комментарии — на русском. Сначала запрошенные пункты a–g, затем вся необходимая инфраструктура.
+Java 21 / Minecraft 1.21.1 / NeoForge 21.1.233. Чистые модели и синтаксис проверены; полный Gradle/игровой прогон ещё требуется.
 
-**Проверка:** модель и синтаксис проверены; полная компиляция NeoForge и запуск игры не выполнены. Детали в VALIDATION_RU.md.
-
-## a. PlayerHealthData: Attachment / Capability / NBT
+## a. Хранение
 
 ### src/main/java/dev/vitalstages/health/PlayerHealthData.java
 
@@ -21,7 +19,7 @@ import java.util.List;
 
 /** Все мутации происходят на основном серверном потоке. Attachment владеет этим объектом. */
 public final class PlayerHealthData implements INBTSerializable<CompoundTag>, HealthView {
-    public static final int FORMAT_VERSION = 1;
+    public static final int FORMAT_VERSION = 2;
     public static final int MAX_WOUNDS = BodyPart.values().length * Wound.Type.values().length;
     private float health = 20, bloodLevel = 100, bleedingRate, consciousness = 100, pain, bodyTemperature = 37;
     private boolean unconscious, criticalTrauma;
@@ -88,6 +86,52 @@ public final class PlayerHealthData implements INBTSerializable<CompoundTag>, He
         // Не прибавляем HP/кровь/сознание: бинт только закрывает конкретную рану.
         return true;
     }
+    public boolean splintWorstFracture() {
+        int selected = -1;
+        float worst = -1;
+        for (int i = 0; i < wounds.size(); i++) {
+            Wound w = wounds.get(i);
+            if (!w.needsSplint()) continue;
+            float score = w.severity() * (w.bodyPart().isLeg() ? 1.5f : 1);
+            if (score > worst) { selected = i; worst = score; }
+        }
+        if (selected < 0) return false;
+        wounds.set(selected, wounds.get(selected).splint());
+        return true;
+    }
+    public int fracturedMask() {
+        int mask = 0;
+        for (Wound w : wounds) if (w.type() == Wound.Type.FRACTURE) mask |= w.bodyPart().bit();
+        return mask;
+    }
+    public int splintedMask() {
+        int mask = 0;
+        for (Wound w : wounds) if (w.type() == Wound.Type.FRACTURE && w.isSplinted()) mask |= w.bodyPart().bit();
+        return mask;
+    }
+    public int openCutMask() {
+        int mask = 0;
+        for (Wound w : wounds) if (w.isOpenCut()) mask |= w.bodyPart().bit();
+        return mask;
+    }
+    public boolean tickRecovery(boolean stable, int bruiseTicks, int cutTicks, int burnTicks, int fractureTicks) {
+        boolean removed = false;
+        for (int i = wounds.size() - 1; i >= 0; i--) {
+            Wound w = wounds.get(i);
+            int duration = switch (w.type()) {
+                case CUT -> cutTicks;
+                case BRUISE -> bruiseTicks;
+                case BURN -> burnTicks;
+                case FRACTURE -> fractureTicks;
+            };
+            RecoveryClock.Step step = RecoveryClock.advance(w.healingTicks(), duration,
+                    stable && w.treatmentAllowsHealing());
+            if (step.healed()) { wounds.remove(i); removed = true; }
+            else if (step.ticks() != w.healingTicks()) wounds.set(i, w.withHealingTicks(step.ticks()));
+        }
+        // Восстановление тканей не даёт HP/кровь и не сбрасывает таймер обморока.
+        return removed;
+    }
     public void recomputeBleeding(boolean enabled, float base, float multiplier, float maximum) {
         float weight = 0; for (Wound w : wounds) weight += w.bleedWeight();
         bleedingRate = enabled ? Physiology.clamp(weight * base * multiplier, 0, maximum, 0) : 0;
@@ -135,7 +179,7 @@ public final class PlayerHealthData implements INBTSerializable<CompoundTag>, He
         n.putFloat("pain", pain); n.putFloat("bodyTemperature", bodyTemperature);
         n.putBoolean("unconscious", unconscious); n.putInt("unconsciousTicks", unconsciousTicks);
         n.putBoolean("criticalTrauma", criticalTrauma);
-        ListTag list = new ListTag(); for (Wound w : wounds) list.add(w.toNbt()); n.put("wounds", list);
+        ListTag list = new ListTag(); for (Wound w : wounds) list.add(WoundNbtCodec.write(w)); n.put("wounds", list);
         return n;
     }
     @Override public void deserializeNBT(HolderLookup.Provider registries, CompoundTag n) {
@@ -152,7 +196,7 @@ public final class PlayerHealthData implements INBTSerializable<CompoundTag>, He
         wounds.clear(); ListTag list = n.getList("wounds", Tag.TAG_COMPOUND);
         // Ограничены и размер состояния, и объём обрабатываемого входного списка.
         for (int i = 0; i < Math.min(MAX_WOUNDS, list.size()); i++) {
-            Wound.fromNbt(list.getCompound(i)).ifPresent(w -> {
+            WoundNbtCodec.read(list.getCompound(i)).ifPresent(w -> {
                 if (wounds.stream().noneMatch(old -> old.bodyPart() == w.bodyPart() && old.type() == w.type()))
                     wounds.add(w);
             });
@@ -219,21 +263,20 @@ public final class HealthAttachments {
 }
 ```
 
-## b. Wound и состояния
+## b. Раны
 
 ### src/main/java/dev/vitalstages/health/Wound.java
 
 ```java
 package dev.vitalstages.health;
 
-import net.minecraft.nbt.CompoundTag;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 
-/** Неизменяемая рана; один агрегат данного типа на часть тела. */
+/** Неизменяемая чистая модель. Minecraft/NBT вынесен в WoundNbtCodec для настоящих unit-проверок. */
 public record Wound(UUID id, BodyPart bodyPart, Type type, float severity,
-                    boolean isBandaged, boolean isSplinted, int infectionTimer, float infectionRisk) {
+                    boolean isBandaged, boolean isSplinted, int infectionTimer,
+                    float infectionRisk, int healingTicks) {
     public enum Type { CUT, BRUISE, FRACTURE, BURN }
     public static final float MAX_SEVERITY = 10;
     public Wound {
@@ -241,43 +284,75 @@ public record Wound(UUID id, BodyPart bodyPart, Type type, float severity,
         severity = Physiology.clamp(severity, 0.05f, MAX_SEVERITY, 0.05f);
         infectionTimer = Math.max(0, Math.min(Physiology.MAX_TIMER, infectionTimer));
         infectionRisk = Physiology.clamp(infectionRisk, 0, 1, 0);
+        healingTicks = Math.max(0, Math.min(Physiology.MAX_TIMER, healingTicks));
+        isSplinted = isSplinted && type == Type.FRACTURE && bodyPart.isLimb();
     }
     public static Wound fresh(BodyPart part, Type type, float severity) {
-        return new Wound(UUID.randomUUID(), part, type, severity, false, false, 0, 0);
+        return new Wound(UUID.randomUUID(), part, type, severity, false, false, 0, 0, 0);
     }
     public boolean isOpenCut() { return type == Type.CUT && !isBandaged; }
+    public boolean needsSplint() { return type == Type.FRACTURE && bodyPart.isLimb() && !isSplinted; }
     public float bleedWeight() { return isOpenCut() ? severity * bodyPart.bleedFactor : 0; }
     public Wound bandage() {
-        return new Wound(id, bodyPart, type, severity, true, isSplinted, infectionTimer, infectionRisk);
+        if (!isOpenCut()) return this;
+        return new Wound(id, bodyPart, type, severity, true, isSplinted, infectionTimer, infectionRisk, healingTicks);
+    }
+    public Wound splint() {
+        if (!needsSplint()) return this;
+        return new Wound(id, bodyPart, type, severity, isBandaged, true, infectionTimer, infectionRisk, healingTicks);
+    }
+    public Wound withHealingTicks(int ticks) {
+        return new Wound(id, bodyPart, type, severity, isBandaged, isSplinted, infectionTimer, infectionRisk, ticks);
+    }
+    public boolean treatmentAllowsHealing() {
+        return switch (type) {
+            case CUT -> isBandaged;
+            case FRACTURE -> isSplinted || !bodyPart.isLimb();
+            default -> true;
+        };
     }
     public Wound mergeImpact(Wound incoming) {
-        if (bodyPart != incoming.bodyPart || type != incoming.type)
-            throw new IllegalArgumentException("Несовместимые раны");
-        // Новый удар по перевязанному месту открывает новую рану в том же агрегате.
+        if (bodyPart != incoming.bodyPart || type != incoming.type) throw new IllegalArgumentException("Несовместимые раны");
+        // Новая травма сбивает фиксацию/перевязку и прогресс. Старый объект остаётся неизменным.
         return new Wound(id, bodyPart, type, severity + incoming.severity, false, false,
-                isBandaged ? 0 : infectionTimer, Math.max(infectionRisk, incoming.infectionRisk));
+                isBandaged ? 0 : infectionTimer, Math.max(infectionRisk, incoming.infectionRisk), 0);
     }
     public Wound tickInfection(boolean enabled, int delayTicks, float hazardPerSecond) {
         if (!enabled || isBandaged || (type != Type.CUT && type != Type.BURN)) return this;
         int age = Math.min(Physiology.MAX_TIMER, infectionTimer + 1);
-        // Накопленный риск. Не бросаем эту полную вероятность заново 20 раз в секунду.
-        float risk = age > delayTicks
-                ? (float) (1 - (1 - infectionRisk) * Math.exp(-hazardPerSecond / 20.0)) : infectionRisk;
-        return new Wound(id, bodyPart, type, severity, isBandaged, isSplinted, age, risk);
+        float hazard = Physiology.clamp(hazardPerSecond, 0, 1, 0);
+        float risk = age > delayTicks ? (float) (1 - (1 - infectionRisk) * Math.exp(-hazard / 20.0)) : infectionRisk;
+        return new Wound(id, bodyPart, type, severity, isBandaged, isSplinted, age, risk, healingTicks);
     }
-    public CompoundTag toNbt() {
+}
+```
+
+### src/main/java/dev/vitalstages/health/WoundNbtCodec.java
+
+```java
+package dev.vitalstages.health;
+
+import net.minecraft.nbt.CompoundTag;
+import java.util.Optional;
+import java.util.UUID;
+
+/** Сохраняет все старые имена ключей. В MVP-1 healingTicks отсутствовал: его default равен 0. */
+public final class WoundNbtCodec {
+    private WoundNbtCodec() {}
+    public static CompoundTag write(Wound w) {
         CompoundTag n = new CompoundTag();
-        n.putUUID("id", id); n.putString("bodyPart", bodyPart.name()); n.putString("type", type.name());
-        n.putFloat("severity", severity); n.putBoolean("isBandaged", isBandaged);
-        n.putBoolean("isSplinted", isSplinted); n.putInt("infectionTimer", infectionTimer);
-        n.putFloat("infectionRisk", infectionRisk); return n;
+        n.putUUID("id", w.id()); n.putString("bodyPart", w.bodyPart().name()); n.putString("type", w.type().name());
+        n.putFloat("severity", w.severity()); n.putBoolean("isBandaged", w.isBandaged());
+        n.putBoolean("isSplinted", w.isSplinted()); n.putInt("infectionTimer", w.infectionTimer());
+        n.putFloat("infectionRisk", w.infectionRisk()); n.putInt("healingTicks", w.healingTicks());
+        return n;
     }
-    public static Optional<Wound> fromNbt(CompoundTag n) {
+    public static Optional<Wound> read(CompoundTag n) {
         try {
             return Optional.of(new Wound(n.hasUUID("id") ? n.getUUID("id") : UUID.randomUUID(),
-                    BodyPart.valueOf(n.getString("bodyPart")), Type.valueOf(n.getString("type")),
+                    BodyPart.valueOf(n.getString("bodyPart")), Wound.Type.valueOf(n.getString("type")),
                     n.getFloat("severity"), n.getBoolean("isBandaged"), n.getBoolean("isSplinted"),
-                    n.getInt("infectionTimer"), n.getFloat("infectionRisk")));
+                    n.getInt("infectionTimer"), n.getFloat("infectionRisk"), n.getInt("healingTicks")));
         } catch (IllegalArgumentException ex) { return Optional.empty(); }
     }
 }
@@ -292,6 +367,10 @@ public enum BodyPart {
     HEAD(1.5f, 2.2f), TORSO(1.4f, 1.5f),
     LEFT_ARM(1.0f, 1.0f), RIGHT_ARM(1.0f, 1.0f),
     LEFT_LEG(1.1f, 1.0f), RIGHT_LEG(1.1f, 1.0f);
+    public boolean isLeg() { return this == LEFT_LEG || this == RIGHT_LEG; }
+    public boolean isArm() { return this == LEFT_ARM || this == RIGHT_ARM; }
+    public boolean isLimb() { return isLeg() || isArm(); }
+    public int bit() { return 1 << ordinal(); }
     public final float bleedFactor, shockFactor;
     BodyPart(float bleedFactor, float shockFactor) {
         this.bleedFactor = bleedFactor; this.shockFactor = shockFactor;
@@ -313,7 +392,48 @@ package dev.vitalstages.health;
 public enum LifeStage { CONSCIOUS, PRESYNCOPE, UNCONSCIOUS }
 ```
 
-## c. DamageEventHandler
+### src/main/java/dev/vitalstages/health/RecoveryClock.java
+
+```java
+package dev.vitalstages.health;
+
+/** Прогресс восстановления — игровые онлайн-тики. Смена часов ОС на него не влияет. */
+public final class RecoveryClock {
+    private RecoveryClock() {}
+    public record Step(int ticks, boolean healed) {}
+    public static Step advance(int previous, int duration, boolean allowed) {
+        int age = Math.max(0, Math.min(Physiology.MAX_TIMER, previous));
+        int required = Math.max(1, Math.min(Physiology.MAX_TIMER, duration));
+        if (!allowed) return new Step(age, false);
+        int next = Math.min(required, age + 1);
+        return new Step(next, next >= required);
+    }
+}
+```
+
+### src/main/java/dev/vitalstages/health/FractureProfile.java
+
+```java
+package dev.vitalstages.health;
+
+/** Чистая математика штрафов: не трогаем base value атрибутов и чужие модификаторы. */
+public record FractureProfile(double movement, double attackSpeed, double miningSpeed,
+                              int untreatedLegs, int untreatedArms) {
+    public static FractureProfile calculate(int fractures, int splinted, boolean enabled,
+                                            double legFactor, double attackFactor, double miningFactor) {
+        int untreated = enabled ? fractures & ~splinted & 0x3F : 0;
+        int legs = Integer.bitCount(untreated & (BodyPart.LEFT_LEG.bit() | BodyPart.RIGHT_LEG.bit()));
+        int arms = Integer.bitCount(untreated & (BodyPart.LEFT_ARM.bit() | BodyPart.RIGHT_ARM.bit()));
+        return new FractureProfile(Math.pow(valid(legFactor), legs), Math.pow(valid(attackFactor), arms),
+                Math.pow(valid(miningFactor), arms), legs, arms);
+    }
+    private static double valid(double value) {
+        return Double.isFinite(value) ? Math.max(0.05, Math.min(1, value)) : 1;
+    }
+}
+```
+
+## c. Урон
 
 ### src/main/java/dev/vitalstages/event/DamageEventHandler.java
 
@@ -373,7 +493,16 @@ public final class DamageEventHandler {
             float severity = Math.min(Wound.MAX_SEVERITY, Math.max(0.05f, actual / 4));
             data.addImpact(Wound.fresh(part, type, severity), HealthConfig.f(HealthConfig.PAIN_PER_SEVERITY),
                     HealthConfig.f(HealthConfig.SHOCK_PER_SEVERITY));
+            // Сильный физический удар может дополнительно сломать руку/ногу.
+            // Дополнительный перелом не удваивает уже начисленный бюджет боли/шока.
+            if (part.isLimb() && type != Wound.Type.FRACTURE && type != Wound.Type.BURN
+                    && HealthConfig.ENABLE_FRACTURES.get()
+                    && actual >= HealthConfig.f(HealthConfig.HEAVY_FRACTURE_THRESHOLD)
+                    && player.getRandom().nextFloat() < HealthConfig.f(HealthConfig.HEAVY_FRACTURE_CHANCE)) {
+                data.addImpact(Wound.fresh(part, Wound.Type.FRACTURE, severity), 0, 0);
+            }
             TickHandler.recomputeBleeding(data);
+            FractureEffects.refresh(player);
         }
         data.refreshVanillaHealth(player.getHealth(), player.getMaxHealth(), HealthConfig.f(HealthConfig.REVIVE_HEALTH));
         // При летальном ударе дождёмся vanilla-решения о тотеме, затем LivingDeathEvent.
@@ -437,7 +566,56 @@ public final class DamageEventHandler {
 }
 ```
 
-## d. TickHandler и чистая Physiology
+### src/main/java/dev/vitalstages/event/FractureEffects.java
+
+```java
+package dev.vitalstages.event;
+
+import dev.vitalstages.VitalStages;
+import dev.vitalstages.config.HealthConfig;
+import dev.vitalstages.health.FractureProfile;
+import dev.vitalstages.registry.HealthAttachments;
+import net.minecraft.core.Holder;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+
+public final class FractureEffects {
+    private static final ResourceLocation LEGS = VitalStages.id("fractured_legs");
+    private static final ResourceLocation ARMS_ATTACK = VitalStages.id("fractured_arms_attack");
+    private static final ResourceLocation ARMS_MINING = VitalStages.id("fractured_arms_mining");
+    private FractureEffects() {}
+    public static void refresh(ServerPlayer p) {
+        var d = HealthAttachments.get(p);
+        var profile = FractureProfile.calculate(d.fracturedMask(), d.splintedMask(),
+                DamageEventHandler.eligible(p) && HealthConfig.ENABLE_FRACTURES.get(),
+                HealthConfig.LEG_MOVEMENT_FACTOR.get(), HealthConfig.ARM_ATTACK_FACTOR.get(), HealthConfig.ARM_MINING_FACTOR.get());
+        apply(p, Attributes.MOVEMENT_SPEED, LEGS, profile.movement());
+        apply(p, Attributes.ATTACK_SPEED, ARMS_ATTACK, profile.attackSpeed());
+        apply(p, Attributes.BLOCK_BREAK_SPEED, ARMS_MINING, profile.miningSpeed());
+    }
+    private static void apply(ServerPlayer p, Holder<Attribute> key, ResourceLocation id, double factor) {
+        AttributeInstance attribute = p.getAttribute(key);
+        if (attribute == null) return; // Совместимость с нестандартным набором атрибутов.
+        AttributeModifier old = attribute.getModifier(id);
+        double amount = factor - 1;
+        if (Math.abs(amount) < 1e-8) {
+            if (old != null) attribute.removeModifier(id);
+            return;
+        }
+        if (old != null && Math.abs(old.amount() - amount) < 1e-8
+                && old.operation() == AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL) return;
+        if (old != null) attribute.removeModifier(id);
+        // Стабильные ID и transient исключают накопление после login/Clone/dimension.
+        attribute.addTransientModifier(new AttributeModifier(id, amount, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
+    }
+}
+```
+
+## d. Тики
 
 ### src/main/java/dev/vitalstages/event/TickHandler.java
 
@@ -475,6 +653,7 @@ public final class TickHandler {
         if (!DamageEventHandler.eligible(player)) {
             // Creative/spectator приостанавливают физиологию, но не стирают раны.
             data.updateControlLock(false);
+            FractureEffects.refresh(player);
             if (player.tickCount % HealthConfig.SYNC_INTERVAL_TICKS.get() == 0) HealthNetwork.sync(player);
             return;
         }
@@ -485,6 +664,16 @@ public final class TickHandler {
         Physiology.Result result = Physiology.step(data.physiologyState(), data.bleedingRate(), data.bodyTemperature(),
                 player.getFoodData().getFoodLevel(), HealthConfig.rules());
         data.accept(result.state());
+        boolean recovered = false;
+        if (!result.terminal()) {
+            boolean stable = !data.criticalTrauma() && (!HealthConfig.ENABLE_BLOOD_LOSS.get()
+                    || data.bloodLevel() > HealthConfig.f(HealthConfig.CRITICAL_BLOOD));
+            recovered = data.tickRecovery(stable, HealthConfig.BRUISE_HEAL_SECONDS.get() * 20,
+                    HealthConfig.CUT_HEAL_SECONDS.get() * 20, HealthConfig.BURN_HEAL_SECONDS.get() * 20,
+                    HealthConfig.FRACTURE_HEAL_SECONDS.get() * 20);
+            if (recovered) recomputeBleeding(data);
+        }
+        FractureEffects.refresh(player);
         boolean controlsChanged = data.updateControlLock(data.unconscious());
         if (data.unconscious()) {
             player.stopUsingItem(); player.setSprinting(false); player.setJumping(false); player.stopFallFlying();
@@ -495,7 +684,7 @@ public final class TickHandler {
         if (result.terminal()) {
             if (data.allowTerminalAttempt()) finishDeath(player, data);
         } else data.clearTerminalRetry();
-        if (player.isAlive() && (controlsChanged || player.tickCount % HealthConfig.SYNC_INTERVAL_TICKS.get() == 0))
+        if (player.isAlive() && (controlsChanged || recovered || player.tickCount % HealthConfig.SYNC_INTERVAL_TICKS.get() == 0))
             HealthNetwork.sync(player);
     }
     private static void finishDeath(ServerPlayer player, PlayerHealthData data) {
@@ -575,7 +764,45 @@ public final class Physiology {
 }
 ```
 
-## e. Network packets
+### src/main/java/dev/vitalstages/event/LifecycleHandler.java
+
+```java
+package dev.vitalstages.event;
+import dev.vitalstages.VitalStages;
+import dev.vitalstages.config.HealthConfig;
+import dev.vitalstages.health.PlayerHealthData;
+import dev.vitalstages.network.HealthNetwork;
+import dev.vitalstages.registry.HealthAttachments;
+import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+
+@EventBusSubscriber(modid = VitalStages.MOD_ID)
+public final class LifecycleHandler {
+    private LifecycleHandler() {}
+    @SubscribeEvent public static void clonePlayer(PlayerEvent.Clone event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        // Death-clone = новая жизнь; возвращение из End = новая сущность со старой медициной.
+        // Заменяем целиком, не дописываем раны поверх уже скопированного attachment.
+        player.setData(HealthAttachments.HEALTH, event.isWasDeath() ? new PlayerHealthData()
+                : HealthAttachments.get(event.getOriginal()).copy());
+    }
+    @SubscribeEvent public static void login(PlayerEvent.PlayerLoggedInEvent e) { sync(e); }
+    @SubscribeEvent public static void respawn(PlayerEvent.PlayerRespawnEvent e) { sync(e); }
+    @SubscribeEvent public static void dimension(PlayerEvent.PlayerChangedDimensionEvent e) { sync(e); }
+    private static void sync(PlayerEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer p)) return;
+        PlayerHealthData d = HealthAttachments.get(p);
+        d.refreshVanillaHealth(p.getHealth(), p.getMaxHealth(), HealthConfig.f(HealthConfig.REVIVE_HEALTH));
+        TickHandler.recomputeBleeding(d); FractureEffects.refresh(p); HealthNetwork.sync(p);
+    }
+    // При logout ничего не очищаем. NeoForge сохраняет attachment в player NBT.
+    // Офлайн-симуляции нет: reconnect продолжает прежний таймер, а не даёт новое окно.
+}
+```
+
+## e. Сеть
 
 ### src/main/java/dev/vitalstages/network/HealthSyncPayload.java
 
@@ -592,19 +819,20 @@ import java.util.UUID;
 /** Owner-only S2C. Полные списки ран для другого игрока без необходимости не рассылаются. */
 public record HealthSyncPayload(UUID playerId, ResourceLocation dimension, float health, float blood, float bleed,
         float consciousness, float pain, float temperature, int stage, int downTicks, int deathWindowTicks,
-        int packedLimbs, boolean enabled, boolean delirium, float intensity) implements CustomPacketPayload {
+        int packedLimbs, int splintedMask, int openCutMask, boolean enabled, boolean delirium, float intensity) implements CustomPacketPayload {
     public static final Type<HealthSyncPayload> TYPE = new Type<>(VitalStages.id("health_sync"));
     public static final StreamCodec<RegistryFriendlyByteBuf, HealthSyncPayload> STREAM_CODEC = new StreamCodec<>() {
         @Override public HealthSyncPayload decode(RegistryFriendlyByteBuf b) {
             return new HealthSyncPayload(b.readUUID(), b.readResourceLocation(), b.readFloat(), b.readFloat(), b.readFloat(),
                     b.readFloat(), b.readFloat(), b.readFloat(), b.readVarInt(), b.readVarInt(), b.readVarInt(),
-                    b.readVarInt(), b.readBoolean(), b.readBoolean(), b.readFloat());
+                    b.readVarInt(), b.readVarInt(), b.readVarInt(), b.readBoolean(), b.readBoolean(), b.readFloat());
         }
         @Override public void encode(RegistryFriendlyByteBuf b, HealthSyncPayload p) {
             b.writeUUID(p.playerId); b.writeResourceLocation(p.dimension); b.writeFloat(p.health);
             b.writeFloat(p.blood); b.writeFloat(p.bleed); b.writeFloat(p.consciousness); b.writeFloat(p.pain);
             b.writeFloat(p.temperature); b.writeVarInt(p.stage); b.writeVarInt(p.downTicks);
             b.writeVarInt(p.deathWindowTicks); b.writeVarInt(p.packedLimbs);
+            b.writeVarInt(p.splintedMask); b.writeVarInt(p.openCutMask);
             b.writeBoolean(p.enabled); b.writeBoolean(p.delirium); b.writeFloat(p.intensity);
         }
     };
@@ -613,7 +841,7 @@ public record HealthSyncPayload(UUID playerId, ResourceLocation dimension, float
         bleed = Physiology.clamp(bleed, 0, 100, 0); consciousness = Physiology.clamp(consciousness, 0, 100, 100);
         pain = Physiology.clamp(pain, 0, 100, 0); temperature = Physiology.clamp(temperature, 25, 45, 37);
         stage = Math.max(0, Math.min(2, stage)); downTicks = Math.max(0, Math.min(Physiology.MAX_TIMER, downTicks));
-        deathWindowTicks = Math.max(100, Math.min(72000, deathWindowTicks)); packedLimbs &= 0xFFF;
+        deathWindowTicks = Math.max(100, Math.min(72000, deathWindowTicks)); packedLimbs &= 0xFFF; splintedMask &= 0x3F; openCutMask &= 0x3F;
         intensity = Physiology.clamp(intensity, 0, 3, 0);
     }
     @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
@@ -641,7 +869,7 @@ public final class HealthNetwork {
     public static void installClientReceiver(Consumer<HealthSyncPayload> receiver) { clientReceiver = Objects.requireNonNull(receiver); }
     public static void register(RegisterPayloadHandlersEvent e) {
         // По умолчанию registrar выполняет handler на MAIN thread; дополнительный enqueueWork не нужен.
-        e.registrar("1").playToClient(HealthSyncPayload.TYPE, HealthSyncPayload.STREAM_CODEC,
+        e.registrar("2").playToClient(HealthSyncPayload.TYPE, HealthSyncPayload.STREAM_CODEC,
                 (payload, context) -> clientReceiver.accept(payload));
     }
     public static void sync(ServerPlayer p) {
@@ -649,13 +877,56 @@ public final class HealthNetwork {
         PacketDistributor.sendToPlayer(p, new HealthSyncPayload(p.getUUID(), p.level().dimension().location(),
                 d.health(), d.bloodLevel(), d.bleedingRate(), d.consciousness(), d.pain(), d.bodyTemperature(),
                 d.stage(HealthConfig.f(HealthConfig.PRESYNCOPE_THRESHOLD)).ordinal(), d.unconsciousTicks(),
-                HealthConfig.windowTicks(), d.packedLimbStatus(), DamageEventHandler.eligible(p),
+                HealthConfig.windowTicks(), d.packedLimbStatus(), d.splintedMask(), d.openCutMask(), DamageEventHandler.eligible(p),
                 HealthConfig.ENABLE_DELIRIUM.get(), HealthConfig.f(HealthConfig.DELIRIUM_INTENSITY)));
     }
 }
 ```
 
-## f. Клиентская виньетка и блокировка ввода
+## f. Клиент
+
+### src/main/java/dev/vitalstages/client/ClientBootstrap.java
+
+```java
+package dev.vitalstages.client;
+import dev.vitalstages.VitalStages;
+import dev.vitalstages.network.HealthNetwork;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+@EventBusSubscriber(modid = VitalStages.MOD_ID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
+public final class ClientBootstrap {
+    private ClientBootstrap() {}
+    @SubscribeEvent public static void keys(RegisterKeyMappingsEvent e) { e.register(ClientKeys.TOGGLE_HUD); }
+    @SubscribeEvent public static void setup(FMLClientSetupEvent e) {
+        HealthNetwork.installClientReceiver(ClientHealthState::accept);
+    }
+}
+```
+
+### src/main/java/dev/vitalstages/client/ClientKeys.java
+
+```java
+package dev.vitalstages.client;
+import dev.vitalstages.config.HudConfig;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
+import org.lwjgl.glfw.GLFW;
+public final class ClientKeys {
+    public static final KeyMapping TOGGLE_HUD = new KeyMapping("key.vitalstages.toggle_hud",
+            GLFW.GLFW_KEY_H, "key.categories.vitalstages");
+    private ClientKeys() {}
+    public static void tick() {
+        while (TOGGLE_HUD.consumeClick()) {
+            if (Minecraft.getInstance().screen != null || Minecraft.getInstance().level == null) continue;
+            HudConfig.SHOW_HUD.set(!HudConfig.SHOW_HUD.get());
+            HudConfig.SPEC.save();
+        }
+    }
+}
+```
 
 ### src/main/java/dev/vitalstages/client/ClientHealthState.java
 
@@ -692,25 +963,6 @@ public final class ClientHealthState {
 }
 ```
 
-### src/main/java/dev/vitalstages/client/ClientBootstrap.java
-
-```java
-package dev.vitalstages.client;
-import dev.vitalstages.VitalStages;
-import dev.vitalstages.network.HealthNetwork;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
-@EventBusSubscriber(modid = VitalStages.MOD_ID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
-public final class ClientBootstrap {
-    private ClientBootstrap() {}
-    @SubscribeEvent public static void setup(FMLClientSetupEvent e) {
-        HealthNetwork.installClientReceiver(ClientHealthState::accept);
-    }
-}
-```
-
 ### src/main/java/dev/vitalstages/client/ClientEvents.java
 
 ```java
@@ -731,7 +983,7 @@ public final class ClientEvents {
     private static boolean cameraLocked;
     private static float lockedYaw, lockedPitch;
     private ClientEvents() {}
-    @SubscribeEvent public static void tick(ClientTickEvent.Post e) { ClientHealthState.tick(); }
+    @SubscribeEvent public static void tick(ClientTickEvent.Post e) { ClientHealthState.tick(); ClientKeys.tick(); }
     @SubscribeEvent public static void logout(ClientPlayerNetworkEvent.LoggingOut e) { ClientHealthState.clear(); cameraLocked = false; }
     @SubscribeEvent public static void login(ClientPlayerNetworkEvent.LoggingIn e) { ClientHealthState.clear(); cameraLocked = false; }
     @SubscribeEvent public static void movement(MovementInputUpdateEvent e) {
@@ -787,20 +1039,102 @@ public final class VitalsOverlay {
             int left = bx * i / 32, right = bx * (i + 1) / 32;
             gui.fill(left, 0, right, h, a << 24); gui.fill(w - right, 0, w - left, h, a << 24);
         }
-        if (!mc.options.hideGui) gui.drawString(mc.font, Component.translatable("vitalstages.vitals",
-                Math.round(p.blood()), Math.round(p.consciousness())), 8, 8, 0xFFE8E8E8);
+        AnatomyHud.render(gui, p);
     }
 }
 ```
 
-## g. Bandage item
+### src/main/java/dev/vitalstages/client/AnatomyHud.java
 
-### src/main/java/dev/vitalstages/item/BandageItem.java
+```java
+package dev.vitalstages.client;
+
+import dev.vitalstages.config.HudConfig;
+import dev.vitalstages.health.BodyPart;
+import dev.vitalstages.health.LimbStatus;
+import dev.vitalstages.network.HealthSyncPayload;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
+
+/** Анатомия дополняет vanilla HUD. Символы дублируют цвет; маленький экран уменьшает панель целиком. */
+public final class AnatomyHud {
+    private static final int WIDTH = 144, HEIGHT = 192;
+    private static final int TEXT = 0xFFF2F1EC, MUTED = 0xFFBAC1C8;
+    private AnatomyHud() {}
+    public static void render(GuiGraphics gui, HealthSyncPayload p) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.options.hideGui || !HudConfig.SHOW_HUD.get()) return;
+        float scale = Math.min(HudConfig.SCALE.get().floatValue(), Math.min(
+                (gui.guiWidth() - 16) / (float) WIDTH, (gui.guiHeight() - 56) / (float) HEIGHT));
+        if (scale <= 0) return;
+        int x = Mth.clamp(HudConfig.X.get(), 0, Math.max(0, gui.guiWidth() - (int) Math.ceil(WIDTH * scale)));
+        int y = Mth.clamp(HudConfig.Y.get(), 0, Math.max(0, gui.guiHeight() - 48 - (int) Math.ceil(HEIGHT * scale)));
+        gui.pose().pushPose();
+        try {
+            gui.pose().translate(x, y, 0);
+            gui.pose().scale(scale, scale, 1);
+            gui.fill(0, 0, WIDTH, HEIGHT, 0xE8192027);
+            gui.fill(0, 0, 3, HEIGHT, 0xFF629CC7);
+            gui.drawString(mc.font, Component.translatable("vitalstages.hud.title"), 10, 7, TEXT);
+            bar(gui, 24, p.blood(), 0xFFE97366, "vitalstages.hud.blood");
+            bar(gui, 46, p.consciousness(), 0xFF74AEE8, "vitalstages.hud.consciousness");
+            part(gui, p, BodyPart.HEAD, 62, 68, 22, 16);
+            part(gui, p, BodyPart.TORSO, 50, 88, 46, 28);
+            part(gui, p, BodyPart.LEFT_ARM, 25, 88, 21, 28);
+            part(gui, p, BodyPart.RIGHT_ARM, 100, 88, 21, 28);
+            part(gui, p, BodyPart.LEFT_LEG, 50, 120, 21, 30);
+            part(gui, p, BodyPart.RIGHT_LEG, 75, 120, 21, 30);
+            gui.drawString(mc.font, Component.translatable("vitalstages.hud.legend_fracture"), 8, 157, MUTED);
+            gui.drawString(mc.font, Component.translatable("vitalstages.hud.legend_wound"), 8, 168, MUTED);
+            gui.drawString(mc.font, Component.translatable("vitalstages.hud.footer",
+                    Math.round(p.health() * 10) / 10.0f, Math.round(p.temperature() * 10) / 10.0f), 8, 180, MUTED);
+        } finally { gui.pose().popPose(); }
+    }
+    private static void bar(GuiGraphics gui, int y, float value, int color, String label) {
+        var font = Minecraft.getInstance().font;
+        gui.drawString(font, Component.translatable(label, Math.round(value)), 8, y - 4, TEXT);
+        gui.fill(8, y + 7, 136, y + 11, 0xFF38424E);
+        int width = Math.round(128 * Mth.clamp(value / 100, 0, 1));
+        if (width > 0) gui.fill(8, y + 7, 8 + width, y + 11, color);
+    }
+    private static void part(GuiGraphics gui, HealthSyncPayload p, BodyPart part, int x, int y, int w, int h) {
+        var font = Minecraft.getInstance().font;
+        int status = (p.packedLimbs() >>> (part.ordinal() * 2)) & 3;
+        boolean splinted = status == LimbStatus.FRACTURED.ordinal() && (p.splintedMask() & part.bit()) != 0;
+        boolean bleeding = (p.openCutMask() & part.bit()) != 0;
+        int color = splinted ? 0xFF7BC7AA : status == LimbStatus.FRACTURED.ordinal() ? 0xFFE97366
+                : status == LimbStatus.BRUISED.ordinal() ? 0xFFE4AD6A : 0xFF899BA8;
+        String mark = splinted ? "+" : status == LimbStatus.FRACTURED.ordinal() ? "x"
+                : status == LimbStatus.BRUISED.ordinal() ? "!" : "-";
+        gui.fill(x, y, x + w, y + h, color);
+        gui.fill(x + 1, y + 1, x + w - 1, y + h - 1, 0xFF242D36);
+        Component label = Component.translatable("vitalstages.part." + part.name().toLowerCase(java.util.Locale.ROOT));
+        if (h < 22) {
+            gui.drawCenteredString(font, label.copy().append((mark.equals("-") ? "" : mark) + (bleeding ? "B" : "")), x + w / 2, y + 4, TEXT);
+        } else {
+            gui.drawCenteredString(font, label, x + w / 2, y + 4, TEXT);
+            gui.drawCenteredString(font, mark + (bleeding ? "B" : ""), x + w / 2, y + h - 11, color);
+        }
+        // Внешняя красная полоска + отдельный символ B отличают открытую рану от одного перелома.
+        if (bleeding) {
+            gui.fill(x - 3, y, x - 1, y + h, 0xFFE97366);
+            // B уже нарисован внутри ячейки: не перекрывает соседнюю часть тела.
+        }
+    }
+}
+```
+
+## g. Предметы
+
+### src/main/java/dev/vitalstages/item/MedicalItem.java
 
 ```java
 package dev.vitalstages.item;
-import dev.vitalstages.config.HealthConfig;
+
 import dev.vitalstages.event.DamageEventHandler;
+import dev.vitalstages.event.FractureEffects;
 import dev.vitalstages.event.TickHandler;
 import dev.vitalstages.health.PlayerHealthData;
 import dev.vitalstages.network.HealthNetwork;
@@ -816,37 +1150,71 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 
-public final class BandageItem extends Item {
-    public BandageItem(Properties p) { super(p); }
+/** Одна серверная проверка для бинта и шины: новые лекарства не обходят правила через другой Item. */
+public abstract class MedicalItem extends Item {
+    protected MedicalItem(Properties properties) { super(properties); }
+    protected abstract boolean treat(PlayerHealthData data);
+    protected abstract int cooldownTicks();
+    protected abstract String successKey();
+    protected abstract String failureKey();
     @Override public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
         if (level.isClientSide) return InteractionResultHolder.success(stack);
         if (!(player instanceof ServerPlayer p)) return InteractionResultHolder.fail(stack);
         return apply(p, p, stack) ? InteractionResultHolder.consume(stack) : InteractionResultHolder.fail(stack);
     }
-    @Override public InteractionResult interactLivingEntity(ItemStack stack, Player user, LivingEntity target, InteractionHand hand) {
+    @Override public InteractionResult interactLivingEntity(ItemStack stack, Player actor, LivingEntity target, InteractionHand hand) {
         if (!(target instanceof Player)) return InteractionResult.PASS;
-        if (user.level().isClientSide) return InteractionResult.SUCCESS;
-        if (!(user instanceof ServerPlayer actor) || !(target instanceof ServerPlayer patient)) return InteractionResult.FAIL;
-        return apply(actor, patient, stack) ? InteractionResult.CONSUME : InteractionResult.FAIL;
+        if (actor.level().isClientSide) return InteractionResult.SUCCESS;
+        if (!(actor instanceof ServerPlayer a) || !(target instanceof ServerPlayer p)) return InteractionResult.FAIL;
+        return apply(a, p, stack) ? InteractionResult.CONSUME : InteractionResult.FAIL;
     }
     private boolean apply(ServerPlayer actor, ServerPlayer patient, ItemStack stack) {
-        // Проверки повторяются на сервере: клиент не выбирает кровь, рану или стоимость лечения.
         if (!actor.isAlive() || !patient.isAlive() || actor.isSpectator() || patient.isSpectator()
-                || stack.isEmpty() || actor.level() != patient.level() || actor.distanceToSqr(patient) > 9
-                || !actor.hasLineOfSight(patient) || actor.getCooldowns().isOnCooldown(this)
+                || stack.isEmpty() || !stack.is(this) || actor.level() != patient.level()
+                || actor.distanceToSqr(patient) > 9 || !actor.hasLineOfSight(patient)
+                || actor.getCooldowns().isOnCooldown(this)
                 || (DamageEventHandler.eligible(actor) && HealthAttachments.get(actor).unconscious())) return false;
         PlayerHealthData d = HealthAttachments.get(patient);
-        if (!d.bandageWorstOpenCut()) {
-            actor.displayClientMessage(Component.translatable("vitalstages.no_open_cut"), true); return false;
+        if (!treat(d)) {
+            actor.displayClientMessage(Component.translatable(failureKey()), true); return false;
         }
-        TickHandler.recomputeBleeding(d);
-        // Сознание вернёт TickHandler, только если состояние действительно стало жизнеспособным.
         if (!actor.getAbilities().instabuild) stack.shrink(1);
-        actor.getCooldowns().addCooldown(this, HealthConfig.BANDAGE_COOLDOWN_TICKS.get());
-        actor.displayClientMessage(Component.translatable("vitalstages.bandaged"), true);
-        HealthNetwork.sync(patient); return true;
+        actor.getCooldowns().addCooldown(this, cooldownTicks());
+        TickHandler.recomputeBleeding(d); FractureEffects.refresh(patient); HealthNetwork.sync(patient);
+        actor.displayClientMessage(Component.translatable(successKey()), true);
+        return true;
     }
+}
+```
+
+### src/main/java/dev/vitalstages/item/BandageItem.java
+
+```java
+package dev.vitalstages.item;
+import dev.vitalstages.config.HealthConfig;
+import dev.vitalstages.health.PlayerHealthData;
+public final class BandageItem extends MedicalItem {
+    public BandageItem(Properties properties) { super(properties); }
+    @Override protected boolean treat(PlayerHealthData d) { return d.bandageWorstOpenCut(); }
+    @Override protected int cooldownTicks() { return HealthConfig.BANDAGE_COOLDOWN_TICKS.get(); }
+    @Override protected String successKey() { return "vitalstages.bandaged"; }
+    @Override protected String failureKey() { return "vitalstages.no_open_cut"; }
+}
+```
+
+### src/main/java/dev/vitalstages/item/SplintItem.java
+
+```java
+package dev.vitalstages.item;
+import dev.vitalstages.config.HealthConfig;
+import dev.vitalstages.health.PlayerHealthData;
+public final class SplintItem extends MedicalItem {
+    public SplintItem(Properties properties) { super(properties); }
+    @Override protected boolean treat(PlayerHealthData d) { return d.splintWorstFracture(); }
+    @Override protected int cooldownTicks() { return HealthConfig.SPLINT_COOLDOWN_TICKS.get(); }
+    @Override protected String successKey() { return "vitalstages.splinted"; }
+    @Override protected String failureKey() { return "vitalstages.no_fracture"; }
 }
 ```
 
@@ -856,6 +1224,7 @@ public final class BandageItem extends Item {
 package dev.vitalstages.registry;
 import dev.vitalstages.VitalStages;
 import dev.vitalstages.item.BandageItem;
+import dev.vitalstages.item.SplintItem;
 import net.minecraft.world.item.Item;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
@@ -863,17 +1232,20 @@ public final class ModItems {
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(VitalStages.MOD_ID);
     public static final DeferredItem<BandageItem> BANDAGE = ITEMS.register("bandage",
             () -> new BandageItem(new Item.Properties().stacksTo(16)));
+    public static final DeferredItem<SplintItem> SPLINT = ITEMS.register("splint",
+            () -> new SplintItem(new Item.Properties().stacksTo(8)));
     private ModItems() {}
 }
 ```
 
-## h. Обязательная инфраструктура
+## h. Инфраструктура
 
 ### src/main/java/dev/vitalstages/VitalStages.java
 
 ```java
 package dev.vitalstages;
 import dev.vitalstages.config.HealthConfig;
+import dev.vitalstages.config.HudConfig;
 import dev.vitalstages.network.HealthNetwork;
 import dev.vitalstages.registry.HealthAttachments;
 import dev.vitalstages.registry.ModItems;
@@ -891,6 +1263,7 @@ public final class VitalStages {
         modBus.addListener(HealthAttachments::registerCapabilities);
         modBus.addListener(HealthNetwork::register);
         container.registerConfig(ModConfig.Type.SERVER, HealthConfig.SPEC);
+        container.registerConfig(ModConfig.Type.CLIENT, HudConfig.SPEC);
     }
     public static ResourceLocation id(String path) { return ResourceLocation.fromNamespaceAndPath(MOD_ID, path); }
 }
@@ -918,11 +1291,15 @@ public final class HealthConfig {
             FRACTURE_DAMAGE_THRESHOLD, INFECTION_HAZARD_PER_SECOND;
     public static final ModConfigSpec.IntValue DEATH_WINDOW_SECONDS, MINIMUM_DOWN_TICKS,
             SYNC_INTERVAL_TICKS, BANDAGE_COOLDOWN_TICKS, INFECTION_DELAY_SECONDS;
+    public static final ModConfigSpec.DoubleValue LEG_MOVEMENT_FACTOR, ARM_ATTACK_FACTOR,
+            ARM_MINING_FACTOR, HEAVY_FRACTURE_THRESHOLD, HEAVY_FRACTURE_CHANCE;
+    public static final ModConfigSpec.IntValue SPLINT_COOLDOWN_TICKS, BRUISE_HEAL_SECONDS,
+            CUT_HEAL_SECONDS, BURN_HEAL_SECONDS, FRACTURE_HEAL_SECONDS;
     static {
         ModConfigSpec.Builder b = new ModConfigSpec.Builder();
         b.push("systems");
         ENABLE_BLOOD_LOSS = b.define("enableBloodLoss", true);
-        ENABLE_FRACTURES = b.comment("Создание FRACTURE. Штрафы/шины вне MVP.").define("enableFractures", true);
+        ENABLE_FRACTURES = b.comment("Создание переломов и штрафы. Отключение не стирает раны/фиксацию.").define("enableFractures", true);
         ENABLE_DELIRIUM = b.comment("Виньетка; обязательный blackout не отключает.").define("enableDelirium", true);
         ENABLE_TEMPERATURE = b.comment("Штраф от сохранённой температуры. Климат вне MVP.").define("enableTemperature", false);
         ENABLE_INFECTION = b.comment("Только таймер и риск. Болезнь/антисептик вне MVP.").define("enableInfection", false);
@@ -958,6 +1335,21 @@ public final class HealthConfig {
         BANDAGE_COOLDOWN_TICKS = b.defineInRange("bandageCooldownTicks", 30, 1, 200);
         INFECTION_DELAY_SECONDS = b.defineInRange("infectionDelaySeconds", 600, 1, 86400);
         INFECTION_HAZARD_PER_SECOND = b.defineInRange("infectionHazardPerSecond", 0.0001, 0, 1);
+        b.pop().push("fractures");
+        LEG_MOVEMENT_FACTOR = b.comment("Множитель на одну нефиксированную сломанную ногу.")
+                .defineInRange("movementPerLeg", 0.55, 0.05, 1.0);
+        ARM_ATTACK_FACTOR = b.defineInRange("attackSpeedPerArm", 0.65, 0.05, 1.0);
+        ARM_MINING_FACTOR = b.defineInRange("miningSpeedPerArm", 0.60, 0.05, 1.0);
+        HEAVY_FRACTURE_THRESHOLD = b.comment("Реальный урон HP после absorption для дополнительного перелома конечности.")
+                .defineInRange("heavyHitThreshold", 6.0, 0.1, 1000);
+        HEAVY_FRACTURE_CHANCE = b.defineInRange("heavyHitFractureChance", 0.35, 0, 1);
+        SPLINT_COOLDOWN_TICKS = b.defineInRange("splintCooldownTicks", 40, 1, 200);
+        b.pop().push("recovery");
+        BRUISE_HEAL_SECONDS = b.defineInRange("bruiseSeconds", 120, 5, 86400);
+        CUT_HEAL_SECONDS = b.comment("Только перевязанный CUT.").defineInRange("bandagedCutSeconds", 180, 5, 86400);
+        BURN_HEAL_SECONDS = b.defineInRange("burnSeconds", 300, 5, 86400);
+        FRACTURE_HEAL_SECONDS = b.comment("Для рук/ног нужна шина; фиксация снимает штраф сразу, кость заживает позже.")
+                .defineInRange("splintedFractureSeconds", 600, 5, 86400);
         b.pop(); SPEC = b.build();
     }
     private HealthConfig() {}
@@ -973,41 +1365,26 @@ public final class HealthConfig {
 }
 ```
 
-### src/main/java/dev/vitalstages/event/LifecycleHandler.java
+### src/main/java/dev/vitalstages/config/HudConfig.java
 
 ```java
-package dev.vitalstages.event;
-import dev.vitalstages.VitalStages;
-import dev.vitalstages.config.HealthConfig;
-import dev.vitalstages.health.PlayerHealthData;
-import dev.vitalstages.network.HealthNetwork;
-import dev.vitalstages.registry.HealthAttachments;
-import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-
-@EventBusSubscriber(modid = VitalStages.MOD_ID)
-public final class LifecycleHandler {
-    private LifecycleHandler() {}
-    @SubscribeEvent public static void clonePlayer(PlayerEvent.Clone event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)) return;
-        // Death-clone = новая жизнь; возвращение из End = новая сущность со старой медициной.
-        // Заменяем целиком, не дописываем раны поверх уже скопированного attachment.
-        player.setData(HealthAttachments.HEALTH, event.isWasDeath() ? new PlayerHealthData()
-                : HealthAttachments.get(event.getOriginal()).copy());
+package dev.vitalstages.config;
+import net.neoforged.neoforge.common.ModConfigSpec;
+/** Только отображение: отключение HUD не меняет серверную физиологию/обморок. */
+public final class HudConfig {
+    public static final ModConfigSpec SPEC;
+    public static final ModConfigSpec.BooleanValue SHOW_HUD;
+    public static final ModConfigSpec.DoubleValue SCALE;
+    public static final ModConfigSpec.IntValue X, Y;
+    static {
+        ModConfigSpec.Builder b = new ModConfigSpec.Builder();
+        SHOW_HUD = b.define("showAnatomyHud", true);
+        SCALE = b.defineInRange("hudScale", 1.0, 0.5, 1.5);
+        X = b.defineInRange("hudX", 8, 0, 4096);
+        Y = b.defineInRange("hudY", 8, 0, 4096);
+        SPEC = b.build();
     }
-    @SubscribeEvent public static void login(PlayerEvent.PlayerLoggedInEvent e) { sync(e); }
-    @SubscribeEvent public static void respawn(PlayerEvent.PlayerRespawnEvent e) { sync(e); }
-    @SubscribeEvent public static void dimension(PlayerEvent.PlayerChangedDimensionEvent e) { sync(e); }
-    private static void sync(PlayerEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer p)) return;
-        PlayerHealthData d = HealthAttachments.get(p);
-        d.refreshVanillaHealth(p.getHealth(), p.getMaxHealth(), HealthConfig.f(HealthConfig.REVIVE_HEALTH));
-        TickHandler.recomputeBleeding(d); HealthNetwork.sync(p);
-    }
-    // При logout ничего не очищаем. NeoForge сохраняет attachment в player NBT.
-    // Офлайн-симуляции нет: reconnect продолжает прежний таймер, а не даёт новое окно.
+    private HudConfig() {}
 }
 ```
 
@@ -1060,7 +1437,56 @@ public abstract class UnconsciousInputMixin {
 }
 ```
 
-## i. Сборка, ресурсы и тесты
+### src/main/java/dev/vitalstages/event/DebugCommands.java
+
+```java
+package dev.vitalstages.event;
+
+import dev.vitalstages.VitalStages;
+import dev.vitalstages.config.HealthConfig;
+import dev.vitalstages.health.BodyPart;
+import dev.vitalstages.health.PlayerHealthData;
+import dev.vitalstages.health.Wound;
+import dev.vitalstages.network.HealthNetwork;
+import dev.vitalstages.registry.HealthAttachments;
+import net.minecraft.commands.Commands;
+import net.minecraft.commands.arguments.EntityArgument;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+
+/** Только OP level 2. Нужны для повторяемого ручного QA, не доступны обычному клиенту. */
+@EventBusSubscriber(modid = VitalStages.MOD_ID)
+public final class DebugCommands {
+    private DebugCommands() {}
+    @SubscribeEvent public static void register(net.neoforged.neoforge.event.RegisterCommandsEvent e) {
+        var target = Commands.argument("player", EntityArgument.player());
+        for (BodyPart part : BodyPart.values()) if (part.isLimb()) {
+            target.then(Commands.literal(part.name().toLowerCase(java.util.Locale.ROOT)).executes(ctx -> {
+                ServerPlayer p = EntityArgument.getPlayer(ctx, "player");
+                var d = HealthAttachments.get(p);
+                d.addImpact(Wound.fresh(part, Wound.Type.FRACTURE, 2), 0, 0);
+                FractureEffects.refresh(p); HealthNetwork.sync(p);
+                ctx.getSource().sendSuccess(() -> Component.translatable("vitalstages.debug.fracture", p.getDisplayName()), false);
+                return 1;
+            }));
+        }
+        var reset = Commands.literal("reset").then(Commands.argument("player", EntityArgument.player()).executes(ctx -> {
+            ServerPlayer p = EntityArgument.getPlayer(ctx, "player");
+            p.setData(HealthAttachments.HEALTH, new PlayerHealthData()); p.setHealth(p.getMaxHealth());
+            HealthAttachments.get(p).refreshVanillaHealth(p.getHealth(), p.getMaxHealth(), HealthConfig.f(HealthConfig.REVIVE_HEALTH));
+            FractureEffects.refresh(p); HealthNetwork.sync(p);
+            ctx.getSource().sendSuccess(() -> Component.translatable("vitalstages.debug.reset", p.getDisplayName()), false);
+            return 1;
+        }));
+        var debug = Commands.literal("debug").then(Commands.literal("fracture").then(target)).then(reset);
+        e.getDispatcher().register(Commands.literal("vitalstages").requires(s -> s.hasPermission(2)).then(debug));
+    }
+}
+```
+
+## i. Сборка, тесты и текстовые ресурсы
 
 ### settings.gradle
 
@@ -1113,6 +1539,23 @@ wrapper {
     gradleVersion = '9.2.1'
     distributionType = Wrapper.DistributionType.BIN
 }
+
+// Gradle 9: main()-тесты исполняются JavaExec, а не JUnit/TestNG.
+tasks.named('test') { failOnNoDiscoveredTests = false }
+tasks.register('mvp2Test', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.vitalstages.health.Mvp2CoreTest'
+}
+check.dependsOn mvp2Test
+
+// Эта задача использует настоящий Minecraft NBT; её нельзя подменять офлайн-заглушками.
+tasks.register('mvp2NbtTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.vitalstages.health.Mvp2NbtTest'
+}
+check.dependsOn mvp2NbtTest
 ```
 
 ### gradle.properties
@@ -1120,8 +1563,310 @@ wrapper {
 ```text
 org.gradle.jvmargs=-Xmx2G -Dfile.encoding=UTF-8
 org.gradle.daemon=false
-mod_version=0.1.0
+mod_version=0.2.0
 neo_version=21.1.233
+```
+
+### src/test/java/dev/vitalstages/health/Mvp2CoreTest.java
+
+```java
+package dev.vitalstages.health;
+
+public final class Mvp2CoreTest {
+    private static int checks;
+    private static void check(boolean value, String message) { checks++; if (!value) throw new AssertionError(message); }
+    private static void near(double a, double b, String m) { check(Math.abs(a - b) < 1e-6, m + ": " + a + " != " + b); }
+    private static FractureProfile profile(int broken, int splinted, boolean on) {
+        return FractureProfile.calculate(broken, splinted, on, 0.55, 0.65, 0.60);
+    }
+    public static void main(String[] args) {
+        int legs = BodyPart.LEFT_LEG.bit() | BodyPart.RIGHT_LEG.bit();
+        int arms = BodyPart.LEFT_ARM.bit() | BodyPart.RIGHT_ARM.bit();
+        near(profile(BodyPart.LEFT_LEG.bit(), 0, true).movement(), 0.55, "Одна нога");
+        near(profile(legs, 0, true).movement(), 0.3025, "Две ноги: произведение, не полный паралич");
+        near(profile(legs, BodyPart.LEFT_LEG.bit(), true).movement(), 0.55, "Шина снимает один штраф");
+        near(profile(legs, legs, true).movement(), 1, "Обе шины возвращают обычный множитель");
+        near(profile(arms, 0, true).attackSpeed(), 0.4225, "Две руки: атака");
+        near(profile(arms, 0, true).miningSpeed(), 0.36, "Две руки: добыча");
+        near(profile(63, 0, false).movement(), 1, "Выключение механики снимает штрафы");
+        near(profile(BodyPart.HEAD.bit() | BodyPart.TORSO.bit(), 0, true).attackSpeed(), 1, "Голова/торс не считаются руками");
+        for (int f = 0; f < 64; f++) for (int s = 0; s < 64; s++) {
+            var p = profile(f, s, true);
+            int untreated = f & ~s;
+            check(p.untreatedLegs() == Integer.bitCount(untreated & legs), "Маска ног");
+            check(p.untreatedArms() == Integer.bitCount(untreated & arms), "Маска рук");
+            check(p.movement() > 0 && p.movement() <= 1, "Граница скорости");
+            check(p.attackSpeed() > 0 && p.attackSpeed() <= 1, "Граница атаки");
+            check(p.miningSpeed() > 0 && p.miningSpeed() <= 1, "Граница добычи");
+        }
+        Wound fracture = Wound.fresh(BodyPart.LEFT_LEG, Wound.Type.FRACTURE, 2);
+        check(fracture.needsSplint(), "Нужна шина");
+        check(!fracture.treatmentAllowsHealing(), "Без шины сращивания нет");
+        Wound splinted = fracture.splint();
+        check(splinted.isSplinted() && splinted.treatmentAllowsHealing(), "Фиксация разрешает сращивание");
+        check(!fracture.isSplinted(), "Исходная рана неизменна");
+        check(splinted.id().equals(fracture.id()), "ID раны сохраняется");
+        check(!splinted.needsSplint(), "Повторная шина не нужна");
+        check(splinted.splint() == splinted, "Идемпотентность фиксации");
+        int ticks = 0;
+        for (int i = 0; i < 12000; i++) {
+            var step = RecoveryClock.advance(ticks, 12000, splinted.treatmentAllowsHealing());
+            ticks = step.ticks();
+            check(step.healed() == (i == 11999), "Ровно десять игровых минут");
+        }
+        check(RecoveryClock.advance(500, 12000, false).ticks() == 500, "Пауза не обнуляет прогресс");
+        check(!RecoveryClock.advance(500, 100, false).healed(), "Нестабильный организм не лечится при смене конфига");
+        check(RecoveryClock.advance(Integer.MAX_VALUE, Physiology.MAX_TIMER, true).healed(), "Нет overflow таймера");
+        Wound progressing = splinted.withHealingTicks(500);
+        Wound newHit = progressing.mergeImpact(Wound.fresh(BodyPart.LEFT_LEG, Wound.Type.FRACTURE, 3));
+        check(newHit.healingTicks() == 0 && !newHit.isSplinted(), "Новый удар сбрасывает фиксацию/прогресс");
+        near(newHit.severity(), 5, "Тяжесть складывается");
+        check(progressing.healingTicks() == 500 && progressing.isSplinted(), "Старый snapshot не мутировал");
+        Wound cut = Wound.fresh(BodyPart.RIGHT_ARM, Wound.Type.CUT, 2);
+        check(cut.bleedWeight() > 0 && !cut.treatmentAllowsHealing(), "Открытая рана не заживает сама");
+        Wound closed = cut.bandage().withHealingTicks(123);
+        check(closed.bleedWeight() == 0 && closed.treatmentAllowsHealing(), "Бинт закрывает рану");
+        check(closed.tickInfection(true, 0, 1).healingTicks() == 123, "Инфекционный тик не стирает заживление");
+        Wound opened = closed.mergeImpact(Wound.fresh(BodyPart.RIGHT_ARM, Wound.Type.CUT, 1));
+        check(opened.isOpenCut() && opened.healingTicks() == 0, "Повторное ранение открывает CUT");
+        Wound corrupt = new Wound(java.util.UUID.randomUUID(), BodyPart.HEAD, Wound.Type.BURN,
+                Float.NaN, false, true, Integer.MAX_VALUE, Float.NaN, Integer.MAX_VALUE);
+        check(Float.isFinite(corrupt.severity()) && Float.isFinite(corrupt.infectionRisk()), "NaN защита");
+        check(!corrupt.isSplinted(), "Нельзя фиксировать ожог головы шиной");
+        check(corrupt.healingTicks() == Physiology.MAX_TIMER, "Ограничение загруженного прогресса");
+        boolean rejected = false;
+        try { cut.mergeImpact(fracture); } catch (IllegalArgumentException expected) { rejected = true; }
+        check(rejected, "Разные раны не объединяются");
+        System.out.println("PASS: " + checks + " MVP-2 checks (fractures, splints, wound recovery)");
+    }
+}
+```
+
+### src/test/java/dev/vitalstages/health/Mvp2NbtTest.java
+
+```java
+package dev.vitalstages.health;
+
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import java.util.UUID;
+
+/** Исполняется Gradle с настоящим Minecraft classpath. Никаких NBT-заглушек. */
+public final class Mvp2NbtTest {
+    private static int checks;
+    private static void check(boolean value, String message) { checks++; if (!value) throw new AssertionError(message); }
+    public static void main(String[] args) {
+        CompoundTag legacy = new CompoundTag();
+        legacy.putInt("version", 1); legacy.putFloat("bloodLevel", 37);
+        legacy.putFloat("consciousness", 0); legacy.putBoolean("unconscious", true);
+        legacy.putBoolean("criticalTrauma", true); legacy.putInt("unconsciousTicks", 230);
+        CompoundTag oldCut = new CompoundTag();
+        UUID woundId = UUID.randomUUID(); oldCut.putUUID("id", woundId);
+        oldCut.putString("bodyPart", "LEFT_ARM"); oldCut.putString("type", "CUT"); oldCut.putFloat("severity", 2);
+        oldCut.putInt("infectionTimer", 300); oldCut.putFloat("infectionRisk", 0.25f);
+        ListTag wounds = new ListTag(); wounds.add(oldCut); legacy.put("wounds", wounds);
+        PlayerHealthData data = new PlayerHealthData();
+        // provider не используется этим форматом: он хранит только примитивы/enum, без registry references.
+        data.deserializeNBT(null, legacy);
+        check(data.bloodLevel() == 37 && data.unconsciousTicks() == 230, "MVP-1: кровь и окно сохранены");
+        check(data.wounds().size() == 1 && data.wounds().get(0).healingTicks() == 0, "Новый прогресс по умолчанию нулевой");
+        check(data.wounds().get(0).id().equals(woundId), "UUID не меняется при миграции");
+        data.enterCriticalTrauma(); check(data.unconsciousTicks() == 230, "Миграция не продлевает окно");
+        var saved = data.serializeNBT(null); check(saved.getInt("version") == 2, "Записываем версию 2");
+        var roundTrip = new PlayerHealthData(); roundTrip.deserializeNBT(null, saved);
+        check(roundTrip.physiologyState().equals(data.physiologyState()), "Организм пережил NBT round-trip");
+        check(roundTrip.wounds().equals(data.wounds()), "Раны пережили NBT round-trip");
+        PlayerHealthData copy = data.copy();
+        check(copy.bandageWorstOpenCut(), "Копия получает перевязку");
+        check(data.wounds().get(0).isOpenCut(), "Clone не разделяет изменяемый список");
+        check(copy.unconsciousTicks() == 230 && data.unconsciousTicks() == 230, "Clone не меняет таймер");
+        Wound progressed = Wound.fresh(BodyPart.RIGHT_LEG, Wound.Type.FRACTURE, 2).splint().withHealingTicks(999);
+        check(WoundNbtCodec.read(WoundNbtCodec.write(progressed)).orElseThrow().equals(progressed), "Фиксация и прогресс сохраняются");
+        PlayerHealthData recovery = new PlayerHealthData();
+        recovery.addImpact(Wound.fresh(BodyPart.LEFT_LEG, Wound.Type.FRACTURE, 2), 0, 0);
+        check(!recovery.tickRecovery(true, 1, 1, 1, 1), "Без шины перелом остаётся");
+        check(recovery.splintWorstFracture(), "Фиксируется одна рана");
+        check(!recovery.splintWorstFracture(), "Нет второй нефиксированной раны");
+        check(recovery.tickRecovery(true, 1, 1, 1, 1) && recovery.wounds().isEmpty(), "Сросшийся перелом удаляется");
+        check(recovery.limbStatus(BodyPart.LEFT_LEG) == LimbStatus.HEALTHY, "Конечность снова здорова");
+        PlayerHealthData many = new PlayerHealthData();
+        for (int i = 0; i < 3; i++) for (BodyPart p : BodyPart.values()) for (Wound.Type t : Wound.Type.values())
+            many.addImpact(Wound.fresh(p, t, 1), 0, 0);
+        check(many.wounds().size() == PlayerHealthData.MAX_WOUNDS, "Лимит 24 агрегата");
+        var future = saved.copy(); future.putInt("version", 3);
+        boolean rejected = false;
+        try { roundTrip.deserializeNBT(null, future); } catch (IllegalArgumentException expected) { rejected = true; }
+        check(rejected, "Будущий формат не затирается");
+        System.out.println("PASS: " + checks + " real-NBT checks (MVP-1 migration, copy, round-trip, recovery)");
+    }
+}
+```
+
+### src/test/java/dev/vitalstages/health/PhysiologyTest.java
+
+```java
+package dev.vitalstages.health;
+
+import java.util.Random;
+
+/** Настоящие проверки production-класса Physiology, без копии формул на другом языке. */
+public final class PhysiologyTest {
+    private static int assertions;
+    private static final Physiology.Rules RULES = new Physiology.Rules(true, false,
+            15, 65, 2, 0.25f, 12, 0.45f, 10, 20, 4, 0.35f, 10, 40, 1200);
+    private static void check(boolean condition, String message) {
+        assertions++; if (!condition) throw new AssertionError(message);
+    }
+    private static void near(float actual, float expected, String message) {
+        check(Math.abs(actual - expected) < 0.001f, message + ": " + actual + " != " + expected);
+    }
+    private static Physiology.State state(float blood, float pain, float consciousness, boolean down, int ticks, boolean critical) {
+        return new Physiology.State(blood, pain, consciousness, down, ticks, critical);
+    }
+    private static Physiology.Result step(Physiology.State s, float bleed) {
+        return Physiology.step(s, bleed, 37, 20, RULES);
+    }
+    public static void main(String[] args) {
+        Physiology.State s = state(100, 0, 100, false, 0, false);
+        for (int i = 0; i < 20; i++) s = step(s, 2).state();
+        near(s.blood(), 98, "20 тиков = одна секунда кровопотери");
+        for (int i = 0; i < 12000; i++) s = step(s, 0).state();
+        near(s.blood(), 98, "Кровь не регенерирует");
+
+        check(step(state(0, 0, 100, false, 0, false), 0).terminal(), "Ноль крови завершает процесс");
+        Physiology.Result r = step(state(0.01f, 0, 100, false, 0, false), 10);
+        near(r.state().blood(), 0, "Не допускаем отрицательную кровь");
+        check(r.terminal(), "Опустошение крови не ждёт таймер");
+
+        s = Physiology.knockOut(state(100, 0, 100, false, 999, true));
+        check(s.unconsciousTicks() == 0, "Первый knockout стартует окно");
+        for (int i = 0; i < 1199; i++) {
+            s = Physiology.knockOut(s); // Повторные летальные удары не дают вечного окна.
+            r = step(s, 0); s = r.state();
+            check(!r.terminal(), "До 60 секунд ещё можно спасти");
+        }
+        check(s.unconsciousTicks() == 1199, "Повторный knockout не обнуляет таймер");
+        check(step(s, 0).terminal(), "Смерть ровно на 1200-м тике");
+
+        s = Physiology.knockOut(state(100, 0, 100, false, 0, false));
+        for (int i = 0; i < 40; i++) s = step(s, 0).state();
+        check(s.unconscious(), "Не просыпаемся раньше гистерезиса сознания");
+        for (int i = 0; i < 20; i++) s = step(s, 0).state();
+        check(!s.unconscious() && s.unconsciousTicks() == 0, "Самовосстановление при стабильном состоянии");
+
+        s = state(26, 50, 0, true, 10, false);
+        check(step(s, 1).targetConsciousness() == 0, "Активная потеря поддерживает обморок");
+        // Эквивалент перевязки: скорость стала нулевой, кровь и HP не прибавлены.
+        for (int i = 0; i < 400; i++) {
+            r = step(s, 0); s = r.state(); check(!r.terminal(), "После ранней перевязки сохраняется окно");
+        }
+        check(!s.unconscious(), "Закрытие раны может позволить очнуться");
+        near(s.blood(), 26, "Перевязка не создала кровь");
+        s = state(14, 0, 0, true, 0, false);
+        for (int i = 0; i < 1200; i++) { r = step(s, 0); s = r.state(); }
+        check(r.terminal(), "При слишком малом объёме крови одного бинта недостаточно");
+
+        s = state(100, 0, 0, true, 0, true);
+        for (int i = 0; i < 200; i++) s = step(s, 0).state();
+        check(s.unconscious() && s.consciousness() == 0, "Критическая травма требует восстановления HP");
+        s = state(s.blood(), s.pain(), s.consciousness(), s.unconscious(), s.unconsciousTicks(), false);
+        for (int i = 0; i < 80; i++) s = step(s, 0).state();
+        check(!s.unconscious(), "После снятия критической травмы возможен выход");
+
+        Physiology.Rules off = new Physiology.Rules(false, false, 15, 65, 2, 0.25f, 12, 0.45f, 10, 20, 4, 0.35f, 10, 40, 1200);
+        s = state(0, 0, 0, true, 0, false);
+        for (int i = 0; i < 80; i++) {
+            r = Physiology.step(s, 100, 37, 20, off); s = r.state(); check(!r.terminal(), "Отключена вся кровяная механика");
+        }
+        check(!s.unconscious(), "Отключённая система не держит в коме");
+        near(s.blood(), 0, "Отключение не перезаписывает сохранённую кровь");
+        s = state(Float.NaN, Float.POSITIVE_INFINITY, Float.NaN, false, Integer.MAX_VALUE, false);
+        check(Float.isFinite(s.blood()) && Float.isFinite(s.pain()) && Float.isFinite(s.consciousness()), "Защита NaN/Infinity");
+        check(s.unconsciousTicks() == Physiology.MAX_TIMER, "Ограничение таймера");
+        near(Physiology.moveTowards(0.001f, 0, 1), 0, "Достижение точного нуля");
+
+        Random random = new Random(1211);
+        for (int i = 0; i < 10000; i++) {
+            s = state(random.nextFloat() * 100, random.nextFloat() * 100, random.nextFloat() * 100,
+                    random.nextBoolean(), random.nextInt(1300), random.nextBoolean());
+            r = Physiology.step(s, random.nextFloat() * 20, random.nextFloat() * 20 + 25, random.nextInt(21), RULES);
+            var t = r.state();
+            check(t.blood() >= 0 && t.blood() <= s.blood(), "Кровь монотонна и ограничена");
+            check(t.consciousness() >= 0 && t.consciousness() <= 100, "Сознание ограничено");
+            check(t.pain() >= 0 && t.pain() <= 100, "Боль ограничена");
+            check(t.unconsciousTicks() >= 0, "Таймер не переполнен");
+        }
+        System.out.println("PASS: " + assertions + " checks; deterministic scenarios + 10,000 randomized steps");
+    }
+}
+```
+
+### scripts/test-core.sh
+
+```sh
+#!/usr/bin/env sh
+set -eu
+cd "$(dirname "$0")/.."
+mkdir -p build/core-tests
+P=src/main/java/dev/vitalstages/health
+T=src/test/java/dev/vitalstages/health
+java -m jdk.compiler/com.sun.tools.javac.Main --release 21 -d build/core-tests   "$P/Physiology.java" "$P/BodyPart.java" "$P/FractureProfile.java" "$P/RecoveryClock.java" "$P/Wound.java"   "$T/PhysiologyTest.java" "$T/Mvp2CoreTest.java"
+java -cp build/core-tests dev.vitalstages.health.PhysiologyTest
+java -cp build/core-tests dev.vitalstages.health.Mvp2CoreTest
+# Mvp2NbtTest требует реальный Minecraft classpath: gradle mvp2NbtTest.
+```
+
+### scripts/JavaSyntaxCheck.java
+
+```java
+import com.sun.source.util.JavacTask;
+import javax.tools.*;
+import java.nio.file.*;
+import java.util.*;
+
+// Синтаксис Java 21, НЕ типизация NeoForge и НЕ проверка mixin-targets.
+class JavaSyntaxCheck {
+    public static void main(String[] args) throws Exception {
+        var compiler = ToolProvider.getSystemJavaCompiler();
+        var diagnostics = new DiagnosticCollector<JavaFileObject>();
+        try (var manager = compiler.getStandardFileManager(diagnostics, null, java.nio.charset.StandardCharsets.UTF_8);
+             var files = Files.walk(Path.of(args[0]))) {
+            var paths = files.filter(p -> p.toString().endsWith(".java")).toList();
+            var task = (JavacTask) compiler.getTask(null, manager, diagnostics,
+                    List.of("--release", "21", "-proc:none"), null, manager.getJavaFileObjectsFromPaths(paths));
+            task.parse();
+            for (var d : diagnostics.getDiagnostics()) if (d.getKind() == Diagnostic.Kind.ERROR)
+                throw new IllegalStateException(d.toString());
+            System.out.println("PASS: Java 21 syntax, " + paths.size() + " source files (not an integration compilation)");
+        }
+    }
+}
+```
+
+### .github/workflows/build.yml
+
+```yaml
+name: Build
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.2.1'
+      - run: gradle --no-daemon build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vitalstages-jars
+          path: build/libs/*.jar
 ```
 
 ### src/main/resources/META-INF/neoforge.mods.toml
@@ -1163,7 +1908,26 @@ config="vitalstages.mixins.json"
   "vitalstages.no_open_cut": "No open cuts to bandage",
   "vitalstages.bandaged": "The most dangerous open cut has been bandaged",
   "death.attack.vitalstages.organ_failure": "%1$s could not be saved",
-  "death.attack.vitalstages.organ_failure.player": "%1$s could not be saved after fighting %2$s"
+  "death.attack.vitalstages.organ_failure.player": "%1$s could not be saved after fighting %2$s",
+  "item.vitalstages.splint": "Splint",
+  "vitalstages.splinted": "Fracture stabilized. Recovery has started.",
+  "vitalstages.no_fracture": "No untreated arm or leg fracture",
+  "key.vitalstages.toggle_hud": "Toggle anatomy HUD",
+  "key.categories.vitalstages": "Vital Stages",
+  "vitalstages.hud.title": "VITAL STATUS",
+  "vitalstages.hud.blood": "Blood: %s%%",
+  "vitalstages.hud.consciousness": "Awareness: %s%%",
+  "vitalstages.hud.legend_fracture": "x fracture  + splint",
+  "vitalstages.hud.legend_wound": "! wound  B open cut",
+  "vitalstages.hud.footer": "HP %s  |  %s°C",
+  "vitalstages.part.head": "H",
+  "vitalstages.part.torso": "T",
+  "vitalstages.part.left_arm": "LA",
+  "vitalstages.part.right_arm": "RA",
+  "vitalstages.part.left_leg": "LL",
+  "vitalstages.part.right_leg": "RL",
+  "vitalstages.debug.fracture": "Test fracture added: %s",
+  "vitalstages.debug.reset": "Health state reset: %s"
 }
 ```
 
@@ -1178,7 +1942,26 @@ config="vitalstages.mixins.json"
   "vitalstages.no_open_cut": "Нет открытых порезов для перевязки",
   "vitalstages.bandaged": "Самая опасная открытая рана перевязана",
   "death.attack.vitalstages.organ_failure": "%1$s не удалось спасти",
-  "death.attack.vitalstages.organ_failure.player": "%1$s не удалось спасти после боя с %2$s"
+  "death.attack.vitalstages.organ_failure.player": "%1$s не удалось спасти после боя с %2$s",
+  "item.vitalstages.splint": "Шина",
+  "vitalstages.splinted": "Перелом зафиксирован. Началось сращивание.",
+  "vitalstages.no_fracture": "Нет нефиксированного перелома руки или ноги",
+  "key.vitalstages.toggle_hud": "Показать / скрыть анатомию",
+  "key.categories.vitalstages": "Vital Stages",
+  "vitalstages.hud.title": "СОСТОЯНИЕ",
+  "vitalstages.hud.blood": "Кровь: %s%%",
+  "vitalstages.hud.consciousness": "Сознание: %s%%",
+  "vitalstages.hud.legend_fracture": "x перелом  + шина",
+  "vitalstages.hud.legend_wound": "! рана  B порез",
+  "vitalstages.hud.footer": "HP %s  |  %s°C",
+  "vitalstages.part.head": "Г",
+  "vitalstages.part.torso": "Т",
+  "vitalstages.part.left_arm": "ЛР",
+  "vitalstages.part.right_arm": "ПР",
+  "vitalstages.part.left_leg": "ЛН",
+  "vitalstages.part.right_leg": "ПН",
+  "vitalstages.debug.fracture": "Добавлен тестовый перелом: %s",
+  "vitalstages.debug.reset": "Состояние сброшено: %s"
 }
 ```
 
@@ -1188,7 +1971,18 @@ config="vitalstages.mixins.json"
 {
   "parent": "minecraft:item/generated",
   "textures": {
-    "layer0": "minecraft:item/paper"
+    "layer0": "vitalstages:item/bandage"
+  }
+}
+```
+
+### src/main/resources/assets/vitalstages/models/item/splint.json
+
+```json
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "vitalstages:item/splint"
   }
 }
 ```
@@ -1302,6 +2096,33 @@ config="vitalstages.mixins.json"
 }
 ```
 
+### src/main/resources/data/vitalstages/recipe/splint.json
+
+```json
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "minecraft:stick"
+    },
+    {
+      "item": "minecraft:stick"
+    },
+    {
+      "item": "minecraft:string"
+    },
+    {
+      "item": "vitalstages:bandage"
+    }
+  ],
+  "result": {
+    "id": "vitalstages:splint",
+    "count": 1
+  }
+}
+```
+
 ### src/main/resources/pack.mcmeta
 
 ```json
@@ -1330,179 +2151,68 @@ config="vitalstages.mixins.json"
 }
 ```
 
-### src/test/java/dev/vitalstages/health/PhysiologyTest.java
+## j. Следующие этапы
 
-```java
-package dev.vitalstages.health;
+# План развития Vital Stages
 
-import java.util.Random;
+## MVP-1 — базовая физиология
+- [x] Attachment/capability, NBT, урон, раны, кровь, боль и сознание.
+- [x] Окно спасения, финальная смерть, бинт, S2C, виньетка и blackout.
 
-/** Настоящие проверки production-класса Physiology, без копии формул на другом языке. */
-public final class PhysiologyTest {
-    private static int assertions;
-    private static final Physiology.Rules RULES = new Physiology.Rules(true, false,
-            15, 65, 2, 0.25f, 12, 0.45f, 10, 20, 4, 0.35f, 10, 40, 1200);
-    private static void check(boolean condition, String message) {
-        assertions++; if (!condition) throw new AssertionError(message);
-    }
-    private static void near(float actual, float expected, String message) {
-        check(Math.abs(actual - expected) < 0.001f, message + ": " + actual + " != " + expected);
-    }
-    private static Physiology.State state(float blood, float pain, float consciousness, boolean down, int ticks, boolean critical) {
-        return new Physiology.State(blood, pain, consciousness, down, ticks, critical);
-    }
-    private static Physiology.Result step(Physiology.State s, float bleed) {
-        return Physiology.step(s, bleed, 37, 20, RULES);
-    }
-    public static void main(String[] args) {
-        Physiology.State s = state(100, 0, 100, false, 0, false);
-        for (int i = 0; i < 20; i++) s = step(s, 2).state();
-        near(s.blood(), 98, "20 тиков = одна секунда кровопотери");
-        for (int i = 0; i < 12000; i++) s = step(s, 0).state();
-        near(s.blood(), 98, "Кровь не регенерирует");
+## MVP-2 — переломы и анатомия (0.2.0)
+- [x] Штрафы переломов рук/ног без накопления атрибутов.
+- [x] Шина для себя/напарника, заживление и сращивание в NBT.
+- [x] Анатомический HUD, клиентские настройки и H.
+- [x] Исправление Gradle 9, новые чистые тесты и NBT-проверки для CI.
+- [ ] Полный зелёный build 0.2.0 и игровой dedicated-server QA.
 
-        check(step(state(0, 0, 100, false, 0, false), 0).terminal(), "Ноль крови завершает процесс");
-        Physiology.Result r = step(state(0.01f, 0, 100, false, 0, false), 10);
-        near(r.state().blood(), 0, "Не допускаем отрицательную кровь");
-        check(r.terminal(), "Опустошение крови не ждёт таймер");
+## MVP-3 — расширенная медицина
+- [ ] Выбор конкретной раны вместо автоматической самой опасной.
+- [ ] Жгут: установка/снятие, ишемия и повреждение тканей при затягивании помощи.
+- [ ] Антисептик, обезболивающее и ограниченное время действия.
+- [ ] Адреналин/реанимация напарником с серверными условиями и cooldown.
+- [ ] Игровой способ пополнения крови без пассивной регенерации.
 
-        s = Physiology.knockOut(state(100, 0, 100, false, 999, true));
-        check(s.unconsciousTicks() == 0, "Первый knockout стартует окно");
-        for (int i = 0; i < 1199; i++) {
-            s = Physiology.knockOut(s); // Повторные летальные удары не дают вечного окна.
-            r = step(s, 0); s = r.state();
-            check(!r.terminal(), "До 60 секунд ещё можно спасти");
-        }
-        check(s.unconsciousTicks() == 1199, "Повторный knockout не обнуляет таймер");
-        check(step(s, 0).terminal(), "Смерть ровно на 1200-м тике");
+## MVP-4 — бред: картинка, звук и реплики
+- [ ] Post-processing: десатурация, двоение, размытие, resize/reload и совместимость.
+- [ ] Пульс, шёпоты и декоративные клиентские фантомы.
+- [ ] Настройки доступности и интенсивности эффектов.
+- [ ] **Добавлено по запросу пользователя: во время бреда от имени персонажа могут появляться фразы из отдельного JSON-файла, который заполняет пользователь.**
 
-        s = Physiology.knockOut(state(100, 0, 100, false, 0, false));
-        for (int i = 0; i < 40; i++) s = step(s, 0).state();
-        check(s.unconscious(), "Не просыпаемся раньше гистерезиса сознания");
-        for (int i = 0; i < 20; i++) s = step(s, 0).state();
-        check(!s.unconscious() && s.unconsciousTicks() == 0, "Самовосстановление при стабильном состоянии");
+### Запланированная спецификация JSON-реплик
 
-        s = state(26, 50, 0, true, 10, false);
-        check(step(s, 1).targetConsciousness() == 0, "Активная потеря поддерживает обморок");
-        // Эквивалент перевязки: скорость стала нулевой, кровь и HP не прибавлены.
-        for (int i = 0; i < 400; i++) {
-            r = step(s, 0); s = r.state(); check(!r.terminal(), "После ранней перевязки сохраняется окно");
-        }
-        check(!s.unconscious(), "Закрытие раны может позволить очнуться");
-        near(s.blood(), 26, "Перевязка не создала кровь");
-        s = state(14, 0, 0, true, 0, false);
-        for (int i = 0; i < 1200; i++) { r = step(s, 0); s = r.state(); }
-        check(r.terminal(), "При слишком малом объёме крови одного бинта недостаточно");
+Статус: план, НЕ работающая функция MVP-2. В 0.2.0 нет loader/таймера/автоматической отправки сообщений.
 
-        s = state(100, 0, 0, true, 0, true);
-        for (int i = 0; i < 200; i++) s = step(s, 0).state();
-        check(s.unconscious() && s.consciousness() == 0, "Критическая травма требует восстановления HP");
-        s = state(s.blood(), s.pain(), s.consciousness(), s.unconscious(), s.unconsciousTicks(), false);
-        for (int i = 0; i < 80; i++) s = step(s, 0).state();
-        check(!s.unconscious(), "После снятия критической травмы возможен выход");
+Планируемый серверный файл: config/vitalstages/delirium_phrases.json.
 
-        Physiology.Rules off = new Physiology.Rules(false, false, 15, 65, 2, 0.25f, 12, 0.45f, 10, 20, 4, 0.35f, 10, 40, 1200);
-        s = state(0, 0, 0, true, 0, false);
-        for (int i = 0; i < 80; i++) {
-            r = Physiology.step(s, 100, 37, 20, off); s = r.state(); check(!r.terminal(), "Отключена вся кровяная механика");
-        }
-        check(!s.unconscious(), "Отключённая система не держит в коме");
-        near(s.blood(), 0, "Отключение не перезаписывает сохранённую кровь");
-        s = state(Float.NaN, Float.POSITIVE_INFINITY, Float.NaN, false, Integer.MAX_VALUE, false);
-        check(Float.isFinite(s.blood()) && Float.isFinite(s.pain()) && Float.isFinite(s.consciousness()), "Защита NaN/Infinity");
-        check(s.unconsciousTicks() == Physiology.MAX_TIMER, "Ограничение таймера");
-        near(Physiology.moveTowards(0.001f, 0, 1), 0, "Достижение точного нуля");
-
-        Random random = new Random(1211);
-        for (int i = 0; i < 10000; i++) {
-            s = state(random.nextFloat() * 100, random.nextFloat() * 100, random.nextFloat() * 100,
-                    random.nextBoolean(), random.nextInt(1300), random.nextBoolean());
-            r = Physiology.step(s, random.nextFloat() * 20, random.nextFloat() * 20 + 25, random.nextInt(21), RULES);
-            var t = r.state();
-            check(t.blood() >= 0 && t.blood() <= s.blood(), "Кровь монотонна и ограничена");
-            check(t.consciousness() >= 0 && t.consciousness() <= 100, "Сознание ограничено");
-            check(t.pain() >= 0 && t.pain() <= 100, "Боль ограничена");
-            check(t.unconsciousTicks() >= 0, "Таймер не переполнен");
-        }
-        System.out.println("PASS: " + assertions + " checks; deterministic scenarios + 10,000 randomized steps");
-    }
+```json
+{
+  "version": 1,
+  "phrases": []
 }
 ```
 
-### scripts/test-core.sh
+Пользователь заполняет phrases своими строками. Пустой массив означает отсутствие реплик. Пустой шаблон приложен как docs/planned/delirium_phrases.example.json; сейчас он не загружается модом.
 
-```sh
-#!/usr/bin/env sh
-set -eu
-cd "$(dirname "$0")/.."
-mkdir -p build/core-tests
-# Можно запускать напрямую без Gradle/Minecraft. Нужен JDK 21+.
-java -m jdk.compiler/com.sun.tools.javac.Main --release 21 -d build/core-tests   src/main/java/dev/vitalstages/health/Physiology.java   src/test/java/dev/vitalstages/health/PhysiologyTest.java
-java -cp build/core-tests dev.vitalstages.health.PhysiologyTest
-```
+Планируемые правила:
 
-### scripts/JavaSyntaxCheck.java
+- Только при бреде и сознании выше нуля. Мёртвые, бессознательные, creative/spectator игроки молчат.
+- Отключено по умолчанию. Серверный toggle и возможность игрока разрешить/отключить реплики от своего персонажа.
+- Случайный интервал, например 45–120 секунд; ограничение частоты, запрет непосредственного повтора, защита от спама через reconnect/dimension.
+- По умолчанию локальная слышимость, например 24 блока в том же измерении, не весь сервер.
+- Вид сообщения: **[Бред] ИмяИгрока: фраза**. Ник берётся сервером; пометка отличает игровой эффект от сознательного сообщения человека.
+- Системное сообщение через Component.literal. Не подделывать подписанный player-chat, подписи или ввод игрока.
+- JSON содержит только текст, не команды и не произвольные компоненты с click/hover actions. Ограничить длину, управляющие символы и переносы строк.
+- Проверять версию, UTF-8, размер файла и массива. Плохой JSON не должен ронять сервер.
+- Будущая OP-команда reload с атомарной заменой набора; при ошибке сохраняется последний исправный набор.
 
-```java
-import com.sun.source.util.JavacTask;
-import javax.tools.*;
-import java.nio.file.*;
-import java.util.*;
+## MVP-5 — среда, инфекция и транспортировка
+- [ ] Теплообмен с биомом/водой/погодой/бронёй и температурные зоны.
+- [ ] Переход риска инфекции в заболевание с симптомами и лечением.
+- [ ] Перенос пострадавшего и корректная физика тела/транспорта.
+- [ ] Аптечка-блок, доставка живого игрока и отдельные правила восстановления.
 
-// Синтаксис Java 21, НЕ типизация NeoForge и НЕ проверка mixin-targets.
-class JavaSyntaxCheck {
-    public static void main(String[] args) throws Exception {
-        var compiler = ToolProvider.getSystemJavaCompiler();
-        var diagnostics = new DiagnosticCollector<JavaFileObject>();
-        try (var manager = compiler.getStandardFileManager(diagnostics, null, java.nio.charset.StandardCharsets.UTF_8);
-             var files = Files.walk(Path.of(args[0]))) {
-            var paths = files.filter(p -> p.toString().endsWith(".java")).toList();
-            var task = (JavacTask) compiler.getTask(null, manager, diagnostics,
-                    List.of("--release", "21", "-proc:none"), null, manager.getJavaFileObjectsFromPaths(paths));
-            task.parse();
-            for (var d : diagnostics.getDiagnostics()) if (d.getKind() == Diagnostic.Kind.ERROR)
-                throw new IllegalStateException(d.toString());
-            System.out.println("PASS: Java 21 syntax, " + paths.size() + " source files (not an integration compilation)");
-        }
-    }
-}
-```
-
-### .github/workflows/build.yml
-
-```yaml
-name: Build
-on: [push, pull_request]
-permissions:
-  contents: read
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.2.1'
-      - run: gradle --no-daemon build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: vitalstages-jars
-          path: build/libs/*.jar
-```
-
-## Следующие шаги — НЕ вошли в MVP
-
-1. Полные переломы: стабильные attribute modifiers, влияние рук на атаки/точность, шины, срок сращивания, удаление заживших ран.
-2. Температура: теплообмен с биомом, водой, погодой, экипировкой и огнём; отдельные зоны гипо-/гипертермии. Сейчас хранится температура и опционально учитывается её штраф.
-3. Инфекция как заболевание: реализовать переход накопленного риска в инфекцию, симптомы, антисептик и лечение. В MVP есть только пер-рановый таймер и расчёт риска.
-4. Полный анатомический HUD и выбор конкретной раны. Новый C2S должен передавать только намерение/ID раны; расстояние, предмет, доступность и стоимость повторно проверяются сервером.
-5. Жгуты с ишемией/некрозом и снятием, обезболивающие, адреналин, дефибриллятор, пополнение крови. Адреналин не должен создавать кровь или стирать повреждения.
-6. Перенос пострадавшего и аптечка-блок: отдельная серверная механика транспортировки/стабилизации/точки восстановления. Различать «доставили живым» и настоящий death-respawn.
-7. Post-processing shader: десатурация, двоение, размытие; корректное управление своими render targets, resize/reload и совместимость с чужими post-chain/Sodium/Iris/Oculus-портами.
-8. Пульс, шёпот, декоративные клиентские фантомы, дозированная тряска камеры; настройки доступности, интенсивности и отказ от насильственной инверсии управления по умолчанию.
-9. Интеграционные GameTests, настоящий dedicated-server smoke test с двумя клиентами, совместимость с death/gravestone/health/anti-cheat модами, долгий нагрузочный прогон и баланс.
-10. Уточнённые направленные попадания и отдельная физика обездвиженного тела. Текущий серверный фильтр движения — ограничение ввода, не ragdoll и не полноценный anti-cheat.
+## Перед стабильным релизом
+- [ ] Интеграционные GameTests, NBT/codec checks, два клиента + dedicated server.
+- [ ] Совместимость с health/death/gravestone/anti-cheat модами.
+- [ ] Долгий прогон, аудит пакетов и игровой баланс.

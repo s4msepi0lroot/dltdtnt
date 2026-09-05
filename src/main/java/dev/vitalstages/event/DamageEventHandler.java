@@ -53,7 +53,16 @@ public final class DamageEventHandler {
             float severity = Math.min(Wound.MAX_SEVERITY, Math.max(0.05f, actual / 4));
             data.addImpact(Wound.fresh(part, type, severity), HealthConfig.f(HealthConfig.PAIN_PER_SEVERITY),
                     HealthConfig.f(HealthConfig.SHOCK_PER_SEVERITY));
+            // Сильный физический удар может дополнительно сломать руку/ногу.
+            // Дополнительный перелом не удваивает уже начисленный бюджет боли/шока.
+            if (part.isLimb() && type != Wound.Type.FRACTURE && type != Wound.Type.BURN
+                    && HealthConfig.ENABLE_FRACTURES.get()
+                    && actual >= HealthConfig.f(HealthConfig.HEAVY_FRACTURE_THRESHOLD)
+                    && player.getRandom().nextFloat() < HealthConfig.f(HealthConfig.HEAVY_FRACTURE_CHANCE)) {
+                data.addImpact(Wound.fresh(part, Wound.Type.FRACTURE, severity), 0, 0);
+            }
             TickHandler.recomputeBleeding(data);
+            FractureEffects.refresh(player);
         }
         data.refreshVanillaHealth(player.getHealth(), player.getMaxHealth(), HealthConfig.f(HealthConfig.REVIVE_HEALTH));
         // При летальном ударе дождёмся vanilla-решения о тотеме, затем LivingDeathEvent.

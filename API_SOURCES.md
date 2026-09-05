@@ -16,3 +16,9 @@
 - ServerGamePacketListenerImpl mappings: https://mappings.dev/1.21.1/net/minecraft/server/network/ServerGamePacketListenerImpl.html
 
 Чтение API/Javadoc не равно компиляции проекта и не подтверждает успешное применение mixin в runtime.
+
+## MVP-2
+- Attributes/BLOCK_BREAK_SPEED: https://mappings.dev/1.21.1/net/minecraft/world/entity/ai/attributes/Attributes.html
+- AttributeInstance: https://lexxie.dev/neoforge/1.21.1/net/minecraft/world/entity/ai/attributes/AttributeInstance.html
+- RegisterKeyMappingsEvent: https://lexxie.dev/neoforge/1.21.1/net/neoforged/neoforge/client/event/RegisterKeyMappingsEvent.html
+- ModConfigSpec.ConfigValue: https://lexxie.dev/neoforge/1.21.1/net/neoforged/neoforge/common/ModConfigSpec.ConfigValue.html

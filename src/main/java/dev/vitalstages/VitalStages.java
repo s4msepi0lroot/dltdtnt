@@ -1,5 +1,6 @@
 package dev.vitalstages;
 import dev.vitalstages.config.HealthConfig;
+import dev.vitalstages.config.HudConfig;
 import dev.vitalstages.network.HealthNetwork;
 import dev.vitalstages.registry.HealthAttachments;
 import dev.vitalstages.registry.ModItems;
@@ -17,6 +18,7 @@ public final class VitalStages {
         modBus.addListener(HealthAttachments::registerCapabilities);
         modBus.addListener(HealthNetwork::register);
         container.registerConfig(ModConfig.Type.SERVER, HealthConfig.SPEC);
+        container.registerConfig(ModConfig.Type.CLIENT, HudConfig.SPEC);
     }
     public static ResourceLocation id(String path) { return ResourceLocation.fromNamespaceAndPath(MOD_ID, path); }
 }

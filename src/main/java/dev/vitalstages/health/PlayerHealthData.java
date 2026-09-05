@@ -10,7 +10,7 @@ import java.util.List;
 
 /** Все мутации происходят на основном серверном потоке. Attachment владеет этим объектом. */
 public final class PlayerHealthData implements INBTSerializable<CompoundTag>, HealthView {
-    public static final int FORMAT_VERSION = 1;
+    public static final int FORMAT_VERSION = 2;
     public static final int MAX_WOUNDS = BodyPart.values().length * Wound.Type.values().length;
     private float health = 20, bloodLevel = 100, bleedingRate, consciousness = 100, pain, bodyTemperature = 37;
     private boolean unconscious, criticalTrauma;
@@ -77,6 +77,52 @@ public final class PlayerHealthData implements INBTSerializable<CompoundTag>, He
         // Не прибавляем HP/кровь/сознание: бинт только закрывает конкретную рану.
         return true;
     }
+    public boolean splintWorstFracture() {
+        int selected = -1;
+        float worst = -1;
+        for (int i = 0; i < wounds.size(); i++) {
+            Wound w = wounds.get(i);
+            if (!w.needsSplint()) continue;
+            float score = w.severity() * (w.bodyPart().isLeg() ? 1.5f : 1);
+            if (score > worst) { selected = i; worst = score; }
+        }
+        if (selected < 0) return false;
+        wounds.set(selected, wounds.get(selected).splint());
+        return true;
+    }
+    public int fracturedMask() {
+        int mask = 0;
+        for (Wound w : wounds) if (w.type() == Wound.Type.FRACTURE) mask |= w.bodyPart().bit();
+        return mask;
+    }
+    public int splintedMask() {
+        int mask = 0;
+        for (Wound w : wounds) if (w.type() == Wound.Type.FRACTURE && w.isSplinted()) mask |= w.bodyPart().bit();
+        return mask;
+    }
+    public int openCutMask() {
+        int mask = 0;
+        for (Wound w : wounds) if (w.isOpenCut()) mask |= w.bodyPart().bit();
+        return mask;
+    }
+    public boolean tickRecovery(boolean stable, int bruiseTicks, int cutTicks, int burnTicks, int fractureTicks) {
+        boolean removed = false;
+        for (int i = wounds.size() - 1; i >= 0; i--) {
+            Wound w = wounds.get(i);
+            int duration = switch (w.type()) {
+                case CUT -> cutTicks;
+                case BRUISE -> bruiseTicks;
+                case BURN -> burnTicks;
+                case FRACTURE -> fractureTicks;
+            };
+            RecoveryClock.Step step = RecoveryClock.advance(w.healingTicks(), duration,
+                    stable && w.treatmentAllowsHealing());
+            if (step.healed()) { wounds.remove(i); removed = true; }
+            else if (step.ticks() != w.healingTicks()) wounds.set(i, w.withHealingTicks(step.ticks()));
+        }
+        // Восстановление тканей не даёт HP/кровь и не сбрасывает таймер обморока.
+        return removed;
+    }
     public void recomputeBleeding(boolean enabled, float base, float multiplier, float maximum) {
         float weight = 0; for (Wound w : wounds) weight += w.bleedWeight();
         bleedingRate = enabled ? Physiology.clamp(weight * base * multiplier, 0, maximum, 0) : 0;
@@ -124,7 +170,7 @@ public final class PlayerHealthData implements INBTSerializable<CompoundTag>, He
         n.putFloat("pain", pain); n.putFloat("bodyTemperature", bodyTemperature);
         n.putBoolean("unconscious", unconscious); n.putInt("unconsciousTicks", unconsciousTicks);
         n.putBoolean("criticalTrauma", criticalTrauma);
-        ListTag list = new ListTag(); for (Wound w : wounds) list.add(w.toNbt()); n.put("wounds", list);
+        ListTag list = new ListTag(); for (Wound w : wounds) list.add(WoundNbtCodec.write(w)); n.put("wounds", list);
         return n;
     }
     @Override public void deserializeNBT(HolderLookup.Provider registries, CompoundTag n) {
@@ -141,7 +187,7 @@ public final class PlayerHealthData implements INBTSerializable<CompoundTag>, He
         wounds.clear(); ListTag list = n.getList("wounds", Tag.TAG_COMPOUND);
         // Ограничены и размер состояния, и объём обрабатываемого входного списка.
         for (int i = 0; i < Math.min(MAX_WOUNDS, list.size()); i++) {
-            Wound.fromNbt(list.getCompound(i)).ifPresent(w -> {
+            WoundNbtCodec.read(list.getCompound(i)).ifPresent(w -> {
                 if (wounds.stream().noneMatch(old -> old.bodyPart() == w.bodyPart() && old.type() == w.type()))
                     wounds.add(w);
             });

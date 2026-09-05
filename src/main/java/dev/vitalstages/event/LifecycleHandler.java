@@ -26,7 +26,7 @@ public final class LifecycleHandler {
         if (!(event.getEntity() instanceof ServerPlayer p)) return;
         PlayerHealthData d = HealthAttachments.get(p);
         d.refreshVanillaHealth(p.getHealth(), p.getMaxHealth(), HealthConfig.f(HealthConfig.REVIVE_HEALTH));
-        TickHandler.recomputeBleeding(d); HealthNetwork.sync(p);
+        TickHandler.recomputeBleeding(d); FractureEffects.refresh(p); HealthNetwork.sync(p);
     }
     // При logout ничего не очищаем. NeoForge сохраняет attachment в player NBT.
     // Офлайн-симуляции нет: reconnect продолжает прежний таймер, а не даёт новое окно.

@@ -34,8 +34,20 @@ wrapper {
     gradleVersion = '9.2.1'
     distributionType = Wrapper.DistributionType.BIN
 }
-tasks.named('test') {
-    // Проверки модели запускаются отдельной задачей physiologyTest.
-    // В src/test пока нет тестов для JUnit/TestNG.
-    failOnNoDiscoveredTests = false
+
+// Gradle 9: main()-тесты исполняются JavaExec, а не JUnit/TestNG.
+tasks.named('test') { failOnNoDiscoveredTests = false }
+tasks.register('mvp2Test', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.vitalstages.health.Mvp2CoreTest'
 }
+check.dependsOn mvp2Test
+
+// Эта задача использует настоящий Minecraft NBT; её нельзя подменять офлайн-заглушками.
+tasks.register('mvp2NbtTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.vitalstages.health.Mvp2NbtTest'
+}
+check.dependsOn mvp2NbtTest
