@@ -34,3 +34,8 @@ wrapper {
     gradleVersion = '9.2.1'
     distributionType = Wrapper.DistributionType.BIN
 }
+tasks.named('test') {
+    // Проверки модели запускаются отдельной задачей physiologyTest.
+    // В src/test пока нет тестов для JUnit/TestNG.
+    failOnNoDiscoveredTests = false
+}
