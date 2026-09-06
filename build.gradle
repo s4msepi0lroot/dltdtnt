@@ -52,19 +52,27 @@ tasks.register('mvp2NbtTest', JavaExec) {
 }
 check.dependsOn mvp2NbtTest
 
-// Тесты NBT используют те же Minecraft/NeoForge-зависимости,
-// что и основной код мода.
+// MVP-3: чистые модели и настоящие Gson/NBT проверки.
+tasks.register('mvp3Test', JavaExec) {
+    dependsOn testClasses
+    mainClass = 'dev.vitalstages.health.Mvp3CoreTest'
+}
+tasks.register('mvp3IntegrationTest', JavaExec) {
+    dependsOn testClasses
+    mainClass = 'dev.vitalstages.health.Mvp3IntegrationTest'
+}
+check.dependsOn mvp3Test, mvp3IntegrationTest
+
+// Исправление compileTestJava: ModDevGradle добавляет Minecraft/NeoForge к main.
 sourceSets {
     test {
         compileClasspath += sourceSets.main.compileClasspath
         runtimeClasspath += sourceSets.main.runtimeClasspath
     }
 }
-
-// Обновляем classpath и у наших JavaExec-задач.
-// Это важно не только для компиляции, но и для запуска NBT-теста.
-['physiologyTest', 'mvp2Test', 'mvp2NbtTest'].each { taskName ->
-    tasks.named(taskName) {
+['physiologyTest', 'mvp2Test', 'mvp2NbtTest', 'mvp3Test', 'mvp3IntegrationTest'].each { taskName ->
+    tasks.named(taskName, JavaExec) {
         classpath = sourceSets.test.runtimeClasspath
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(21) }
     }
 }

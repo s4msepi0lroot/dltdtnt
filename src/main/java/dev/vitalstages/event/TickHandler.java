@@ -1,6 +1,7 @@
 package dev.vitalstages.event;
 
 import dev.vitalstages.VitalStages;
+import dev.vitalstages.chat.DeliriumChatService;
 import dev.vitalstages.config.HealthConfig;
 import dev.vitalstages.health.Physiology;
 import dev.vitalstages.health.PlayerHealthData;
@@ -40,7 +41,8 @@ public final class TickHandler {
         data.tickInfection(HealthConfig.ENABLE_INFECTION.get(), HealthConfig.INFECTION_DELAY_SECONDS.get() * 20,
                 HealthConfig.f(HealthConfig.INFECTION_HAZARD_PER_SECOND));
         Physiology.Result result = Physiology.step(data.physiologyState(), data.bleedingRate(), data.bodyTemperature(),
-                player.getFoodData().getFoodLevel(), HealthConfig.rules());
+                player.getFoodData().getFoodLevel(), HealthConfig.rules(), data.painRelief(HealthConfig.f(HealthConfig.PAIN_RELIEF)),
+                data.treatments().adrenalineTicks() > 0 ? HealthConfig.f(HealthConfig.ADRENALINE_BONUS) : 0);
         data.accept(result.state());
         boolean recovered = false;
         if (!result.terminal()) {
@@ -62,8 +64,13 @@ public final class TickHandler {
         if (result.terminal()) {
             if (data.allowTerminalAttempt()) finishDeath(player, data);
         } else data.clearTerminalRetry();
-        if (player.isAlive() && (controlsChanged || recovered || player.tickCount % HealthConfig.SYNC_INTERVAL_TICKS.get() == 0))
-            HealthNetwork.sync(player);
+        if (player.isAlive()) {
+            if (!result.terminal()) DeliriumChatService.trySpeak(player, false);
+            int beforeFlags = data.treatments().activeFlags();
+            data.tickTreatments();
+            if (controlsChanged || recovered || beforeFlags != data.treatments().activeFlags()
+                    || player.tickCount % HealthConfig.SYNC_INTERVAL_TICKS.get() == 0) HealthNetwork.sync(player);
+        }
     }
     private static void finishDeath(ServerPlayer player, PlayerHealthData data) {
         var type = player.registryAccess().registryOrThrow(Registries.DAMAGE_TYPE).getHolderOrThrow(ORGAN_FAILURE);

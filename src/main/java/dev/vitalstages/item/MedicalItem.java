@@ -1,6 +1,7 @@
 package dev.vitalstages.item;
 
 import dev.vitalstages.event.DamageEventHandler;
+import dev.vitalstages.config.HealthConfig;
 import dev.vitalstages.event.FractureEffects;
 import dev.vitalstages.event.TickHandler;
 import dev.vitalstages.health.PlayerHealthData;
@@ -43,6 +44,8 @@ public abstract class MedicalItem extends Item {
                 || actor.getCooldowns().isOnCooldown(this)
                 || (DamageEventHandler.eligible(actor) && HealthAttachments.get(actor).unconscious())) return false;
         PlayerHealthData d = HealthAttachments.get(patient);
+        d.refreshVanillaHealth(patient.getHealth(), patient.getMaxHealth(), HealthConfig.f(HealthConfig.REVIVE_HEALTH));
+        TickHandler.recomputeBleeding(d);
         if (!treat(d)) {
             actor.displayClientMessage(Component.translatable(failureKey()), true); return false;
         }
@@ -50,6 +53,7 @@ public abstract class MedicalItem extends Item {
         actor.getCooldowns().addCooldown(this, cooldownTicks());
         TickHandler.recomputeBleeding(d); FractureEffects.refresh(patient); HealthNetwork.sync(patient);
         actor.displayClientMessage(Component.translatable(successKey()), true);
+        if (actor != patient) patient.displayClientMessage(Component.translatable(successKey()), true);
         return true;
     }
 }

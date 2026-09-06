@@ -22,6 +22,10 @@ public final class Physiology {
     public record Result(State state, float targetConsciousness, boolean terminal) {}
 
     public static Result step(State old, float bleedingRate, float temperature, int foodLevel, Rules r) {
+        return step(old, bleedingRate, temperature, foodLevel, r, 0, 0);
+    }
+    public static Result step(State old, float bleedingRate, float temperature, int foodLevel, Rules r,
+            float painRelief, float adrenalineBonus) {
         float bleed = r.bloodLoss ? clamp(bleedingRate, 0, 100, 0) : 0;
         // Вход — единицы/секунду. На каждом игровом тике снимаем 1/20, а не всю скорость.
         float blood = Math.max(0, old.blood - bleed * DT);
@@ -32,8 +36,11 @@ public final class Physiology {
         float tempPenalty = r.temperature
                 ? Math.abs(clamp(temperature, 25, 45, 37) - 37) * r.temperaturePenaltyScale : 0;
         float hungerPenalty = (20 - Math.max(0, Math.min(20, foodLevel))) * r.hungerPenaltyScale;
-        float target = clamp(100 - bloodPenalty - pain * r.painPenaltyScale
-                - bleed * r.activeBleedPenalty - tempPenalty - hungerPenalty, 0, 100, 0);
+        // Обезболивание маскирует боль, а не удаляет её из организма. Бонус не действует при критической травме/коме.
+        float perceivedPain = Math.max(0, pain - clamp(painRelief, 0, 100, 0));
+        float target = clamp(100 - bloodPenalty - perceivedPain * r.painPenaltyScale
+                - bleed * r.activeBleedPenalty - tempPenalty - hungerPenalty
+                + clamp(adrenalineBonus, 0, 100, 0), 0, 100, 0);
         if (effectiveBlood <= r.comaBloodThreshold || old.criticalTrauma) target = 0;
         float speed = target < old.consciousness ? r.fallPerSecond : r.recoveryPerSecond;
         float consciousness = moveTowards(old.consciousness, target, speed * DT);

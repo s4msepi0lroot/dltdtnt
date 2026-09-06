@@ -21,14 +21,20 @@ public final class HealthConfig {
             ARM_MINING_FACTOR, HEAVY_FRACTURE_THRESHOLD, HEAVY_FRACTURE_CHANCE;
     public static final ModConfigSpec.IntValue SPLINT_COOLDOWN_TICKS, BRUISE_HEAL_SECONDS,
             CUT_HEAL_SECONDS, BURN_HEAL_SECONDS, FRACTURE_HEAL_SECONDS;
+    public static final ModConfigSpec.IntValue PAINKILLER_SECONDS, ANTISEPTIC_SECONDS, ADRENALINE_SECONDS,
+            ADRENALINE_COOLDOWN_SECONDS, DONATION_COOLDOWN_SECONDS, MEDICINE_COOLDOWN_TICKS,
+            CHAT_MIN_SECONDS, CHAT_MAX_SECONDS;
+    public static final ModConfigSpec.DoubleValue PAIN_RELIEF, ADRENALINE_BONUS, ADRENALINE_MIN_BLOOD,
+            DONATION_MIN_BLOOD, CHAT_RADIUS, CHAT_MAX_CONSCIOUSNESS;
+    public static final ModConfigSpec.BooleanValue CHAT_ENABLED;
     static {
         ModConfigSpec.Builder b = new ModConfigSpec.Builder();
         b.push("systems");
         ENABLE_BLOOD_LOSS = b.define("enableBloodLoss", true);
         ENABLE_FRACTURES = b.comment("Создание переломов и штрафы. Отключение не стирает раны/фиксацию.").define("enableFractures", true);
-        ENABLE_DELIRIUM = b.comment("Виньетка; обязательный blackout не отключает.").define("enableDelirium", true);
+        ENABLE_DELIRIUM = b.comment("Визуальные эффекты и JSON-реплики; обязательный blackout не отключает.").define("enableDelirium", true);
         ENABLE_TEMPERATURE = b.comment("Штраф от сохранённой температуры. Климат вне MVP.").define("enableTemperature", false);
-        ENABLE_INFECTION = b.comment("Только таймер и риск. Болезнь/антисептик вне MVP.").define("enableInfection", false);
+        ENABLE_INFECTION = b.comment("Таймер/риск с антисептиком. Клиническое заболевание пока не моделируется.").define("enableInfection", false);
         b.pop().push("damage");
         HEALTH_DAMAGE_FRACTION = b.defineInRange("healthDamageFraction", 0.6, 0.05, 1.0);
         PAIN_PER_SEVERITY = b.defineInRange("painPerSeverity", 14.0, 0, 100);
@@ -76,6 +82,25 @@ public final class HealthConfig {
         BURN_HEAL_SECONDS = b.defineInRange("burnSeconds", 300, 5, 86400);
         FRACTURE_HEAL_SECONDS = b.comment("Для рук/ног нужна шина; фиксация снимает штраф сразу, кость заживает позже.")
                 .defineInRange("splintedFractureSeconds", 600, 5, 86400);
+        b.pop().push("medicines");
+        PAINKILLER_SECONDS = b.defineInRange("painkillerSeconds", 120, 1, 86400);
+        PAIN_RELIEF = b.defineInRange("painRelief", 35.0, 1, 100);
+        ANTISEPTIC_SECONDS = b.defineInRange("antisepticSeconds", 300, 1, 86400);
+        ADRENALINE_SECONDS = b.defineInRange("adrenalineSeconds", 20, 1, 3600);
+        ADRENALINE_COOLDOWN_SECONDS = b.defineInRange("adrenalineCooldownSeconds", 180, 1, 86400);
+        ADRENALINE_BONUS = b.defineInRange("adrenalineConsciousnessBonus", 30.0, 1, 100);
+        ADRENALINE_MIN_BLOOD = b.defineInRange("adrenalineMinimumBlood", 25.0, 1, 100);
+        DONATION_MIN_BLOOD = b.defineInRange("donationMinimumBlood", 70.0, 40, 100);
+        DONATION_COOLDOWN_SECONDS = b.defineInRange("donationCooldownSeconds", 300, 1, 86400);
+        MEDICINE_COOLDOWN_TICKS = b.defineInRange("medicineCooldownTicks", 40, 1, 200);
+        b.pop().push("deliriumChat");
+        CHAT_ENABLED = b.comment("Заполните config/vitalstages/delirium_phrases.json. Только серверный буквальный текст.")
+                .define("enabled", false);
+        CHAT_MIN_SECONDS = b.defineInRange("minIntervalSeconds", 45, 1, 86400);
+        CHAT_MAX_SECONDS = b.defineInRange("maxIntervalSeconds", 120, 1, 86400);
+        CHAT_RADIUS = b.comment("0 = всё текущее измерение; больше нуля = расстояние в блоках.")
+                .defineInRange("radiusBlocks", 32.0, 0, 256);
+        CHAT_MAX_CONSCIOUSNESS = b.defineInRange("maximumConsciousness", 35.0, 1, 99);
         b.pop(); SPEC = b.build();
     }
     private HealthConfig() {}

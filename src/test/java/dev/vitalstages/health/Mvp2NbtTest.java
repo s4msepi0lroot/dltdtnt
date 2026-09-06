@@ -25,7 +25,7 @@ public final class Mvp2NbtTest {
         check(data.wounds().size() == 1 && data.wounds().get(0).healingTicks() == 0, "Новый прогресс по умолчанию нулевой");
         check(data.wounds().get(0).id().equals(woundId), "UUID не меняется при миграции");
         data.enterCriticalTrauma(); check(data.unconsciousTicks() == 230, "Миграция не продлевает окно");
-        var saved = data.serializeNBT(null); check(saved.getInt("version") == 2, "Записываем версию 2");
+        var saved = data.serializeNBT(null); check(saved.getInt("version") == PlayerHealthData.FORMAT_VERSION, "Записываем текущую версию");
         var roundTrip = new PlayerHealthData(); roundTrip.deserializeNBT(null, saved);
         check(roundTrip.physiologyState().equals(data.physiologyState()), "Организм пережил NBT round-trip");
         check(roundTrip.wounds().equals(data.wounds()), "Раны пережили NBT round-trip");
@@ -46,7 +46,7 @@ public final class Mvp2NbtTest {
         for (int i = 0; i < 3; i++) for (BodyPart p : BodyPart.values()) for (Wound.Type t : Wound.Type.values())
             many.addImpact(Wound.fresh(p, t, 1), 0, 0);
         check(many.wounds().size() == PlayerHealthData.MAX_WOUNDS, "Лимит 24 агрегата");
-        var future = saved.copy(); future.putInt("version", 3);
+        var future = saved.copy(); future.putInt("version", PlayerHealthData.FORMAT_VERSION + 1);
         boolean rejected = false;
         try { roundTrip.deserializeNBT(null, future); } catch (IllegalArgumentException expected) { rejected = true; }
         check(rejected, "Будущий формат не затирается");

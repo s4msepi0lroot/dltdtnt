@@ -29,6 +29,11 @@ public final class AnatomyHud {
             gui.fill(0, 0, WIDTH, HEIGHT, 0xE8192027);
             gui.fill(0, 0, 3, HEIGHT, 0xFF629CC7);
             gui.drawString(mc.font, Component.translatable("vitalstages.hud.title"), 10, 7, TEXT);
+            if (p.medicineFlags() != 0) {
+                String marks = ((p.medicineFlags() & 1) != 0 ? "P" : "") + ((p.medicineFlags() & 2) != 0 ? "A" : "");
+                gui.fill(112, 4, 136, 19, 0xFF304456);
+                gui.drawCenteredString(mc.font, marks, 124, 7, 0xFFD5EAFE);
+            }
             bar(gui, 24, p.blood(), 0xFFE97366, "vitalstages.hud.blood");
             bar(gui, 46, p.consciousness(), 0xFF74AEE8, "vitalstages.hud.consciousness");
             part(gui, p, BodyPart.HEAD, 62, 68, 22, 16);

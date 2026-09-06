@@ -22,3 +22,7 @@
 - AttributeInstance: https://lexxie.dev/neoforge/1.21.1/net/minecraft/world/entity/ai/attributes/AttributeInstance.html
 - RegisterKeyMappingsEvent: https://lexxie.dev/neoforge/1.21.1/net/neoforged/neoforge/client/event/RegisterKeyMappingsEvent.html
 - ModConfigSpec.ConfigValue: https://lexxie.dev/neoforge/1.21.1/net/neoforged/neoforge/common/ModConfigSpec.ConfigValue.html
+
+## MVP-3
+- ServerPlayer.sendSystemMessage(Component): https://mappings.dev/1.21.1/net/minecraft/server/level/ServerPlayer.html
+- Новые Java-классы/интеграционный build требуют прогона CI; чтение mapping не заменяет компиляцию.

@@ -10,11 +10,12 @@ import java.util.List;
 
 /** Все мутации происходят на основном серверном потоке. Attachment владеет этим объектом. */
 public final class PlayerHealthData implements INBTSerializable<CompoundTag>, HealthView {
-    public static final int FORMAT_VERSION = 2;
+    public static final int FORMAT_VERSION = 3;
     public static final int MAX_WOUNDS = BodyPart.values().length * Wound.Type.values().length;
     private float health = 20, bloodLevel = 100, bleedingRate, consciousness = 100, pain, bodyTemperature = 37;
     private boolean unconscious, criticalTrauma;
     private int unconsciousTicks;
+    private TreatmentState treatments = TreatmentState.fresh();
     private final ArrayList<Wound> wounds = new ArrayList<>();
     // Технические флаги НЕ переживают загрузку/clone и не попадают в NBT.
     private boolean finalizing, controlsLocked;
@@ -90,6 +91,50 @@ public final class PlayerHealthData implements INBTSerializable<CompoundTag>, He
         wounds.set(selected, wounds.get(selected).splint());
         return true;
     }
+    public TreatmentState treatments() { return treatments; }
+    public void tickTreatments() { treatments = treatments.tick(); }
+    public void allowDeliriumChat(boolean allowed) { treatments = treatments.allowChat(allowed); }
+    public void recordSpeech(String phrase, int cooldown) { treatments = treatments.afterSpeech(phrase, cooldown); }
+    public float painRelief(float amount) { return treatments.painkillerTicks() > 0 ? Physiology.clamp(amount, 0, 100, 0) : 0; }
+    public float effectivePain(float amount) { return Math.max(0, pain - painRelief(amount)); }
+    public boolean takePainkiller(int duration) {
+        // Таблетки нельзя давать бессознательному. Препарат не суммируется сам с собой.
+        if (unconscious || pain <= 0 || treatments.painkillerTicks() > 0 || duration <= 0) return false;
+        treatments = treatments.painkiller(duration); return true;
+    }
+    public boolean disinfectWorstWound(int duration) {
+        if (duration <= 0) return false;
+        int selected = -1; float worst = -1;
+        for (int i = 0; i < wounds.size(); i++) {
+            Wound w = wounds.get(i); if (!w.needsAntiseptic()) continue;
+            float score = w.infectionRisk() * 100 + w.severity() + w.infectionTimer() / 1200.0f;
+            if (score > worst) { selected = i; worst = score; }
+        }
+        if (selected < 0) return false;
+        wounds.set(selected, wounds.get(selected).disinfect(duration)); return true;
+    }
+    public boolean giveAdrenaline(float minimumBlood, float initialConsciousness, int duration, int cooldown) {
+        if (duration <= 0 || !MedicalRules.canAdrenaline(physiologyState(), bleedingRate,
+                treatments.adrenalineCooldownTicks(), minimumBlood)) return false;
+        treatments = treatments.adrenaline(duration, cooldown);
+        consciousness = Physiology.clamp(initialConsciousness, 1, 100, 30);
+        unconscious = false; unconsciousTicks = 0;
+        // Только уже стабилизированный живой организм. HP/кровь не прибавляются, criticalTrauma НЕ обходится.
+        return true;
+    }
+    public boolean donateBlood(float healthFraction, float minimumBlood, int cooldown) {
+        if (!MedicalRules.canDonate(physiologyState(), bleedingRate, healthFraction,
+                treatments.donationCooldownTicks(), minimumBlood)) return false;
+        bloodLevel -= MedicalRules.BLOOD_UNIT;
+        treatments = treatments.donation(cooldown); return true;
+    }
+    public boolean transfuseBlood() {
+        if (bloodLevel >= 100) return false;
+        bloodLevel = MedicalRules.transfusedBlood(bloodLevel); return true;
+    }
+    public PlayerHealthData newLife() {
+        PlayerHealthData fresh = new PlayerHealthData(); fresh.treatments = treatments.newLife(); return fresh;
+    }
     public int fracturedMask() {
         int mask = 0;
         for (Wound w : wounds) if (w.type() == Wound.Type.FRACTURE) mask |= w.bodyPart().bit();
@@ -161,6 +206,7 @@ public final class PlayerHealthData implements INBTSerializable<CompoundTag>, He
         d.consciousness = consciousness; d.pain = pain; d.bodyTemperature = bodyTemperature;
         d.unconscious = unconscious; d.unconsciousTicks = unconsciousTicks; d.criticalTrauma = criticalTrauma;
         d.wounds.addAll(wounds); // Wound неизменяем, контейнер списка новый.
+        d.treatments = treatments; // Immutable record: копия изолирована от последующих замен.
         return d;
     }
     @Override public CompoundTag serializeNBT(HolderLookup.Provider registries) {
@@ -170,6 +216,7 @@ public final class PlayerHealthData implements INBTSerializable<CompoundTag>, He
         n.putFloat("pain", pain); n.putFloat("bodyTemperature", bodyTemperature);
         n.putBoolean("unconscious", unconscious); n.putInt("unconsciousTicks", unconsciousTicks);
         n.putBoolean("criticalTrauma", criticalTrauma);
+        n.put("treatments", TreatmentNbtCodec.write(treatments));
         ListTag list = new ListTag(); for (Wound w : wounds) list.add(WoundNbtCodec.write(w)); n.put("wounds", list);
         return n;
     }
@@ -192,6 +239,7 @@ public final class PlayerHealthData implements INBTSerializable<CompoundTag>, He
                     wounds.add(w);
             });
         }
+        treatments = TreatmentNbtCodec.read(n.getCompound("treatments"));
         finalizing = false; controlsLocked = false; terminalRetryTicks = 0;
     }
     private static float number(CompoundTag n, String key, float fallback, float min, float max) {

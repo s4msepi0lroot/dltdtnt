@@ -16,7 +16,7 @@ public final class LifecycleHandler {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
         // Death-clone = новая жизнь; возвращение из End = новая сущность со старой медициной.
         // Заменяем целиком, не дописываем раны поверх уже скопированного attachment.
-        player.setData(HealthAttachments.HEALTH, event.isWasDeath() ? new PlayerHealthData()
+        player.setData(HealthAttachments.HEALTH, event.isWasDeath() ? HealthAttachments.get(event.getOriginal()).newLife()
                 : HealthAttachments.get(event.getOriginal()).copy());
     }
     @SubscribeEvent public static void login(PlayerEvent.PlayerLoggedInEvent e) { sync(e); }
