@@ -4,9 +4,9 @@ license="MIT"
 [[mods]]
 modId="vitalstages"
 version="${version}"
-displayName="Vital Stages"
-authors="Vital Stages contributors"
-description='''Server-authoritative staged health, wounds, unconsciousness and first aid.'''
+displayName="вс"
+authors="самса с пивом"
+description='''оу вививи нахуй иди.'''
 [[dependencies.vitalstages]]
 modId="neoforge"
 type="required"
