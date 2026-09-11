@@ -58,8 +58,18 @@ public final class SyncConfig {
     public boolean hideWhenIdle = false;
     /** Subtle animated film grain over the dark panels. */
     public boolean grain = true;
-    /** Accent hairlines / progress fill colour (RGB). */
-    public int accentColor = 0x0099FF;
+    /** Accent hairlines / progress fill colour (RGB). Kept in sync with the theme. */
+    public int accentColor = 0xCCFF00;
+
+    // ------------------------------------------------------------------ theme
+    /** Fully user editable colour scheme for every menu, HUD and 3D element. */
+    public ThemeColors theme = new ThemeColors();
+    /** Extra scale applied to the player / settings screens (0 = auto fit). */
+    public float uiScale = 0.0f;
+
+    // ------------------------------------------------------------ local source
+    /** Poll interval of the Windows media session watcher, in milliseconds. */
+    public int localPollMs = 250;
 
     // ----------------------------------------------------------------- lyrics
     public LyricsMode lyricsMode = LyricsMode.HUD;
@@ -72,6 +82,12 @@ public final class SyncConfig {
     public boolean lyricsShowOnScreens = false;
     /** Manual offset (ms) applied to synced lyrics timing. */
     public int lyricsOffsetMs = 0;
+    /**
+     * How far ahead of the reported position lyrics are switched, in ms.
+     * Media sessions report the position with a small delay, so a little lead
+     * keeps the highlighted line in step with the music instead of trailing it.
+     */
+    public int lyricsLeadMs = 260;
 
     // -------------------------------------------------------------- 3D lyrics
     public float ringRadius = 3.4f;
@@ -134,6 +150,14 @@ public final class SyncConfig {
         if (localSessionFilter == null) {
             localSessionFilter = "spotify";
         }
+        if (theme == null) {
+            theme = new ThemeColors();
+        }
+        theme.sanitise();
+        accentColor = theme.accent & 0xFFFFFF;
+        uiScale = clamp(uiScale, 0.0f, 2.0f);
+        localPollMs = clamp(localPollMs, 80, 2000);
+        lyricsLeadMs = clamp(lyricsLeadMs, -1000, 2000);
         callbackPort = clamp(callbackPort, 1024, 65535);
         pollIntervalMs = clamp(pollIntervalMs, 700, 15000);
         hudScale = clamp(hudScale, 0.5f, 2.5f);

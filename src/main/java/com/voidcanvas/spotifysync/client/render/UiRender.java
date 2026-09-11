@@ -13,10 +13,15 @@ import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.resources.ResourceLocation;
 import org.joml.Matrix4f;
 
+import java.util.Locale;
+
 /**
- * Low level drawing helpers implementing the void-canvas visual language:
- * slightly rounded near-black cards, hairline borders, accent rules, animated
- * film grain and scaled textured quads for album artwork.
+ * Drawing primitives for the Obsidian and Lime glassmorphism system.
+ *
+ * <p>Everything the UI needs lives here: the floating shell, glass panels with
+ * a faux backdrop blur, pill buttons with a neon glow, the decorative grid,
+ * noise overlays, glow spheres, tracked-out mono labels, tight display
+ * headings and scaled album artwork.</p>
  */
 public final class UiRender {
 
@@ -25,9 +30,9 @@ public final class UiRender {
 
     // ------------------------------------------------------------------ shapes
 
-    /** Filled rectangle with slightly rounded corners (radius in GUI pixels). */
+    /** Filled rectangle with rounded corners (radius in GUI pixels). */
     public static void roundedRect(GuiGraphics graphics, int x, int y, int width, int height, int radius, int color) {
-        if (width <= 0 || height <= 0) {
+        if (width <= 0 || height <= 0 || (color >>> 24) == 0) {
             return;
         }
         int r = Math.max(0, Math.min(radius, Math.min(width, height) / 2));
@@ -39,15 +44,15 @@ public final class UiRender {
         graphics.fill(x, y + r, x + r, y + height - r, color);
         graphics.fill(x + width - r, y + r, x + width, y + height - r, color);
         for (int i = 0; i < r; i++) {
-            int inset = r - (int) Math.floor(Math.sqrt(Math.max(0.0, r * r - (r - i - 1) * (r - i - 1))));
+            int inset = cornerInset(r, i);
             graphics.fill(x + inset, y + i, x + width - inset, y + i + 1, color);
             graphics.fill(x + inset, y + height - i - 1, x + width - inset, y + height - i, color);
         }
     }
 
-    /** 1px hairline border following the same rounded silhouette. */
+    /** One pixel ring following the same rounded silhouette. */
     public static void roundedBorder(GuiGraphics graphics, int x, int y, int width, int height, int radius, int color) {
-        if (width <= 0 || height <= 0) {
+        if (width <= 0 || height <= 0 || (color >>> 24) == 0) {
             return;
         }
         int r = Math.max(0, Math.min(radius, Math.min(width, height) / 2));
@@ -56,7 +61,7 @@ public final class UiRender {
         graphics.fill(x, y + r, x + 1, y + height - r, color);
         graphics.fill(x + width - 1, y + r, x + width, y + height - r, color);
         for (int i = 0; i < r; i++) {
-            int inset = r - (int) Math.floor(Math.sqrt(Math.max(0.0, r * r - (r - i - 1) * (r - i - 1))));
+            int inset = cornerInset(r, i);
             graphics.fill(x + inset, y + i, x + inset + 1, y + i + 1, color);
             graphics.fill(x + width - inset - 1, y + i, x + width - inset, y + i + 1, color);
             graphics.fill(x + inset, y + height - i - 1, x + inset + 1, y + height - i, color);
@@ -64,68 +69,99 @@ public final class UiRender {
         }
     }
 
-    /** Card = near-black surface + hairline border, the system's base panel. */
+    private static int cornerInset(int radius, int row) {
+        double dy = radius - row - 1;
+        return radius - (int) Math.floor(Math.sqrt(Math.max(0.0, radius * radius - dy * dy)));
+    }
+
+    /** Fully rounded pill fill. */
+    public static void pill(GuiGraphics graphics, int x, int y, int width, int height, int color) {
+        roundedRect(graphics, x, y, width, height, height / 2, color);
+    }
+
+    public static void pillBorder(GuiGraphics graphics, int x, int y, int width, int height, int color) {
+        roundedBorder(graphics, x, y, width, height, height / 2, color);
+    }
+
+    // ------------------------------------------------------------------ panels
+
+    /** Floating shell: obsidian background, hairline ring, grid and noise. */
+    public static void shell(GuiGraphics graphics, int x, int y, int width, int height, float alpha) {
+        int radius = UiTheme.radiusCard() + 2;
+        roundedRect(graphics, x, y, width, height, radius, UiTheme.withAlpha(UiTheme.shell(), alpha));
+        grid(graphics, x + 1, y + 1, width - 2, height - 2, alpha);
+        noise(graphics, x + 1, y + 1, width - 2, height - 2, alpha);
+        roundedBorder(graphics, x, y, width, height, radius, UiTheme.ring(alpha));
+    }
+
+    /** Glass panel: faux backdrop blur plus white overlay and hairline ring. */
+    public static void glass(GuiGraphics graphics, int x, int y, int width, int height, float alpha) {
+        glass(graphics, x, y, width, height, UiTheme.radiusCard(), alpha);
+    }
+
+    public static void glass(GuiGraphics graphics, int x, int y, int width, int height, int radius, float alpha) {
+        roundedRect(graphics, x, y, width, height, radius, UiTheme.scrim(alpha));
+        roundedRect(graphics, x, y, width, height, radius, UiTheme.glass(alpha));
+        roundedBorder(graphics, x, y, width, height, radius, UiTheme.ring(alpha));
+    }
+
+    /** Opaque card used for the biggest surfaces. */
     public static void card(GuiGraphics graphics, int x, int y, int width, int height, float alpha) {
-        roundedRect(graphics, x, y, width, height, UiTheme.RADIUS_CARD, UiTheme.withAlpha(UiTheme.SURFACE, alpha));
-        roundedBorder(graphics, x, y, width, height, UiTheme.RADIUS_CARD, UiTheme.withAlpha(UiTheme.BORDER, alpha));
+        int radius = UiTheme.radiusCard();
+        roundedRect(graphics, x, y, width, height, radius, UiTheme.withAlpha(UiTheme.surface(), alpha));
+        roundedRect(graphics, x, y, width, height, radius, UiTheme.glass(alpha * 0.6f));
+        roundedBorder(graphics, x, y, width, height, radius, UiTheme.ring(alpha));
     }
 
-    /** Card variant with the rationed accent hairline (featured panels only). */
+    /** Solid accent card with noise, per the bento spec. */
     public static void accentCard(GuiGraphics graphics, int x, int y, int width, int height, float alpha) {
-        roundedRect(graphics, x, y, width, height, UiTheme.RADIUS_CARD_LG, UiTheme.withAlpha(UiTheme.SURFACE, alpha));
-        roundedBorder(graphics, x, y, width, height, UiTheme.RADIUS_CARD_LG,
-                UiTheme.withAlpha(UiTheme.accent(), alpha * 0.55f));
+        int radius = UiTheme.radiusCard();
+        roundedRect(graphics, x, y, width, height, radius, UiTheme.accent(alpha));
+        noise(graphics, x + 1, y + 1, width - 2, height - 2, alpha * 0.8f);
     }
 
-    /** Translucent blue "glass" tile used for small stat modules. */
+    /** Small glass tile for technical metadata. */
     public static void glassTile(GuiGraphics graphics, int x, int y, int width, int height, float alpha) {
-        roundedRect(graphics, x, y, width, height, UiTheme.RADIUS_CONTROL, UiTheme.withAlpha(UiTheme.GLASS, alpha));
+        glass(graphics, x, y, width, height, Math.min(UiTheme.radiusCard(), height / 2), alpha);
     }
 
-    /** Thin accent rule, the signature separator of the system. */
+    /** Hairline separator in the border tint. */
+    public static void hairline(GuiGraphics graphics, int x, int y, int width, float alpha) {
+        graphics.fill(x, y, x + width, y + 1, UiTheme.ring(alpha));
+    }
+
+    /** Short accent rule, the signature separator of the system. */
     public static void accentRule(GuiGraphics graphics, int x, int y, int width, float alpha) {
         graphics.fill(x, y, x + width, y + 1, UiTheme.accent(alpha));
     }
 
-    public static void hairline(GuiGraphics graphics, int x, int y, int width, float alpha) {
-        graphics.fill(x, y, x + width, y + 1, UiTheme.withAlpha(UiTheme.BORDER, alpha));
-    }
+    // -------------------------------------------------------------- decoration
 
-    /** Progress track + accent fill + 2px playhead. */
-    public static void progressBar(GuiGraphics graphics, int x, int y, int width, int height,
-                                   float fraction, float alpha, boolean showHead) {
-        int clampedHeight = Math.max(2, height);
-        roundedRect(graphics, x, y, width, clampedHeight, clampedHeight / 2,
-                UiTheme.withAlpha(UiTheme.TRACK, alpha));
-        int filled = (int) (width * Math.max(0f, Math.min(1f, fraction)));
-        if (filled > 0) {
-            roundedRect(graphics, x, y, filled, clampedHeight, clampedHeight / 2, UiTheme.accent(alpha));
+    /** Linear gradient grid pattern behind panels. */
+    public static void grid(GuiGraphics graphics, int x, int y, int width, int height, float alpha) {
+        if (!UiTheme.colors().gridPattern || width <= 0 || height <= 0) {
+            return;
         }
-        if (showHead && filled > 0) {
-            int headX = Math.min(x + width - 1, x + filled);
-            graphics.fill(headX - 1, y - 1, headX + 1, y + clampedHeight + 1,
-                    UiTheme.withAlpha(UiTheme.TEXT_PRIMARY, alpha));
+        int color = UiTheme.argb(UiTheme.colors().border, UiTheme.colors().gridOpacity * 0.22f * alpha);
+        int cell = UiTheme.GRID_CELL;
+        for (int gx = cell; gx < width; gx += cell) {
+            graphics.fill(x + gx, y, x + gx + 1, y + height, color);
+        }
+        for (int gy = cell; gy < height; gy += cell) {
+            graphics.fill(x, y + gy, x + width, y + gy + 1, color);
         }
     }
 
-    /** Vertical fade into pure black, used to bleed media into the canvas. */
-    public static void fadeToBlack(GuiGraphics graphics, int x, int y, int width, int height, float alpha) {
-        graphics.fillGradient(x, y, x + width, y + height,
-                UiTheme.withAlpha(0x00000000, 0f), UiTheme.withAlpha(UiTheme.BACKGROUND, alpha));
-    }
-
-    /** Corner accent wash from the design spec (blue 10% to dark 50%). */
-    public static void accentWash(GuiGraphics graphics, int x, int y, int width, int height, float alpha) {
-        graphics.fillGradient(x, y, x + width, y + height,
-                UiTheme.accent(0.10f * alpha), UiTheme.withAlpha(0xFF1C1C1C, 0.5f * alpha));
-    }
-
-    /**
-     * Subtle animated film grain. It textures flat black fields without
-     * brightening them, exactly as the design guardrails require.
-     */
-    public static void grain(GuiGraphics graphics, int x, int y, int width, int height, float alpha) {
-        long frame = (System.nanoTime() / 90_000_000L);
+    /** Grainy animated noise so dark panels never look flat. */
+    public static void noise(GuiGraphics graphics, int x, int y, int width, int height, float alpha) {
+        if (!UiTheme.colors().noiseOverlay || width <= 0 || height <= 0) {
+            return;
+        }
+        float strength = UiTheme.colors().noiseOpacity * alpha;
+        if (strength <= 0.001f) {
+            return;
+        }
+        long frame = System.nanoTime() / 110_000_000L;
         int step = 3;
         for (int gx = 0; gx < width; gx += step) {
             for (int gy = 0; gy < height; gy += step) {
@@ -134,13 +170,84 @@ public final class UiRender {
                 if (magnitude < 5) {
                     continue;
                 }
-                int a = (int) ((magnitude - 4) * 6 * alpha);
+                int a = (int) ((magnitude - 4) * 26 * strength);
                 if (a <= 0) {
                     continue;
                 }
-                int color = (Math.min(a, 40) << 24) | 0xFFFFFF;
-                graphics.fill(x + gx, y + gy, x + gx + 1, y + gy + 1, color);
+                graphics.fill(x + gx, y + gy, x + gx + 1, y + gy + 1,
+                        (Math.min(a, 46) << 24) | (UiTheme.colors().glass & 0xFFFFFF));
             }
+        }
+    }
+
+    /** Large soft radial glow sphere, approximated with concentric rings. */
+    public static void glowSphere(GuiGraphics graphics, int centerX, int centerY, int radius, int rgb, float alpha) {
+        if (!UiTheme.colors().glowSpheres || radius <= 0) {
+            return;
+        }
+        float strength = UiTheme.colors().glowOpacity * alpha;
+        int rings = 9;
+        for (int i = rings; i > 0; i--) {
+            float t = i / (float) rings;
+            int r = (int) (radius * t);
+            float ringAlpha = strength * 0.055f * (1f - t + 0.25f);
+            roundedRect(graphics, centerX - r, centerY - r, r * 2, r * 2, r,
+                    UiTheme.argb(rgb & 0xFFFFFF, ringAlpha));
+        }
+    }
+
+    /** Neon glow around a pill button. */
+    public static void neonGlow(GuiGraphics graphics, int x, int y, int width, int height, int rgb, float alpha) {
+        for (int i = 1; i <= 4; i++) {
+            float ringAlpha = alpha * (0.16f / i);
+            roundedRect(graphics, x - i, y - i, width + i * 2, height + i * 2, (height + i * 2) / 2,
+                    UiTheme.argb(rgb & 0xFFFFFF, ringAlpha));
+        }
+    }
+
+    /** Vertical fade into the background colour. */
+    public static void fadeToBackground(GuiGraphics graphics, int x, int y, int width, int height, float alpha) {
+        graphics.fillGradient(x, y, x + width, y + height, 0x00000000,
+                UiTheme.argb(UiTheme.colors().background, alpha));
+    }
+
+    /** Data visualisation bars used by cards and the HUD. */
+    public static void verticalBars(GuiGraphics graphics, int x, int y, int width, int height,
+                                    int bars, int color, boolean animate, long seed) {
+        int count = Math.max(1, bars);
+        int gap = 2;
+        int barWidth = Math.max(1, (width - gap * (count - 1)) / count);
+        double time = System.nanoTime() / 1_000_000_000.0;
+        for (int i = 0; i < count; i++) {
+            double phase = animate
+                    ? Math.sin(time * 3.2 + i * 0.9 + seed) * 0.5 + 0.5
+                    : ((hash(i, (int) seed) >>> 8) & 0xFF) / 255.0;
+            int barHeight = (int) Math.max(2, phase * height);
+            int barX = x + i * (barWidth + gap);
+            roundedRect(graphics, barX, y + height - barHeight, barWidth, barHeight,
+                    Math.min(2, barWidth / 2), color);
+        }
+    }
+
+    /** Pulsing dot of the system status tag. */
+    public static void statusDot(GuiGraphics graphics, int x, int y, int rgb, float alpha) {
+        float pulse = 0.55f + 0.45f * UiTheme.pulse(2.0);
+        roundedRect(graphics, x - 1, y - 1, 5, 5, 2, UiTheme.argb(rgb & 0xFFFFFF, 0.22f * alpha * pulse));
+        roundedRect(graphics, x, y, 3, 3, 1, UiTheme.argb(rgb & 0xFFFFFF, alpha));
+    }
+
+    /** Progress track, accent fill and playhead. */
+    public static void progressBar(GuiGraphics graphics, int x, int y, int width, int height,
+                                   float fraction, float alpha, boolean showHead) {
+        int h = Math.max(2, height);
+        roundedRect(graphics, x, y, width, h, h / 2, UiTheme.withAlpha(UiTheme.track(), alpha));
+        int filled = (int) (width * Math.max(0f, Math.min(1f, fraction)));
+        if (filled > 0) {
+            roundedRect(graphics, x, y, filled, h, h / 2, UiTheme.accent(alpha));
+        }
+        if (showHead) {
+            int headX = Math.max(x + 1, Math.min(x + width - 1, x + filled));
+            roundedRect(graphics, headX - 2, y - 2, 4, h + 4, 2, UiTheme.textPrimary(alpha));
         }
     }
 
@@ -153,131 +260,132 @@ public final class UiRender {
     // ------------------------------------------------------------------- text
 
     public static Font font() {
-        return Minecraft.getInstance().font;
+        return UiRenderText.font();
     }
 
     public static void text(GuiGraphics graphics, String value, int x, int y, int color, boolean shadow) {
-        graphics.drawString(font(), value, x, y, color, shadow);
-    }
-
-    public static void textCentered(GuiGraphics graphics, String value, int centerX, int y, int color, boolean shadow) {
-        graphics.drawString(font(), value, centerX - font().width(value) / 2, y, color, shadow);
+        UiRenderText.text(graphics, value, x, y, color, shadow);
     }
 
     public static void textRight(GuiGraphics graphics, String value, int rightX, int y, int color, boolean shadow) {
-        graphics.drawString(font(), value, rightX - font().width(value), y, color, shadow);
+        UiRenderText.textRight(graphics, value, rightX, y, color, shadow);
     }
 
-    /** Draws text scaled around its top-left corner. */
+    public static void textCentered(GuiGraphics graphics, String value, int centerX, int y, int color, boolean shadow) {
+        UiRenderText.textCentered(graphics, value, centerX, y, color, shadow);
+    }
+
     public static void textScaled(GuiGraphics graphics, String value, float x, float y, float scale,
                                   int color, boolean shadow) {
-        graphics.pose().pushPose();
-        graphics.pose().translate(x, y, 0f);
-        graphics.pose().scale(scale, scale, 1f);
-        graphics.drawString(font(), value, 0, 0, color, shadow);
-        graphics.pose().popPose();
+        UiRenderText.textScaled(graphics, value, x, y, scale, color, shadow);
     }
 
     public static void textScaledCentered(GuiGraphics graphics, String value, float centerX, float y, float scale,
                                           int color, boolean shadow) {
-        float width = font().width(value) * scale;
-        textScaled(graphics, value, centerX - width / 2f, y, scale, color, shadow);
+        UiRenderText.textScaled(graphics, value, centerX - font().width(value) * scale / 2f, y, scale, color, shadow);
     }
 
-    /** Truncates with an ellipsis so labels never overflow their card. */
+    public static void textScaledRight(GuiGraphics graphics, String value, float rightX, float y, float scale,
+                                       int color, boolean shadow) {
+        UiRenderText.textScaled(graphics, value, rightX - font().width(value) * scale, y, scale, color, shadow);
+    }
+
+    /** Display heading with the tight tracking of the design system. */
+    public static void display(GuiGraphics graphics, String value, float x, float y, float scale, int color) {
+        UiRenderText.drawTracked(graphics, value, x, y, scale, color, -0.06f);
+    }
+
+    public static float displayWidth(String value, float scale) {
+        return UiRenderText.trackedWidth(value, scale, -0.06f);
+    }
+
+    /** Technical mono label: uppercase and tracked out, JetBrains Mono role. */
+    public static void mono(GuiGraphics graphics, String value, float x, float y, float scale, int color) {
+        UiRenderText.drawTracked(graphics, UiRenderText.upper(value), x, y, scale, color, 0.2f);
+    }
+
+    public static float monoWidth(String value, float scale) {
+        return UiRenderText.trackedWidth(UiRenderText.upper(value), scale, 0.2f);
+    }
+
+    public static void monoRight(GuiGraphics graphics, String value, float rightX, float y, float scale, int color) {
+        mono(graphics, value, rightX - monoWidth(value, scale), y, scale, color);
+    }
+
+    public static void monoCentered(GuiGraphics graphics, String value, float centerX, float y, float scale, int color) {
+        mono(graphics, value, centerX - monoWidth(value, scale) / 2f, y, scale, color);
+    }
+
+    /** System status tag: pulsing dot plus tracked-out mono label. */
+    public static void statusTag(GuiGraphics graphics, String label, int x, int y, int dotRgb, float alpha) {
+        statusDot(graphics, x, y + 2, dotRgb, alpha);
+        mono(graphics, label, x + 8, y, 0.7f, UiTheme.textSecondary(alpha));
+    }
+
+    public static float statusTagWidth(String label) {
+        return 8f + monoWidth(label, 0.7f);
+    }
+
     public static String ellipsize(String value, int maxWidth) {
-        Font font = font();
-        if (value == null || value.isEmpty() || font.width(value) <= maxWidth) {
-            return value == null ? "" : value;
-        }
-        String ellipsis = "\u2026";
-        int ellipsisWidth = font.width(ellipsis);
-        StringBuilder builder = new StringBuilder();
-        int width = 0;
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            int charWidth = font.width(String.valueOf(c));
-            if (width + charWidth + ellipsisWidth > maxWidth) {
-                break;
-            }
-            builder.append(c);
-            width += charWidth;
-        }
-        return builder.append(ellipsis).toString();
+        return UiRenderText.ellipsize(value, maxWidth);
     }
 
-    /**
-     * Horizontal marquee offset for text wider than the available space.
-     * Returns 0 when the text fits.
-     */
     public static int marqueeOffset(String value, int available, int pixelsPerSecond) {
-        int width = font().width(value);
-        if (width <= available) {
-            return 0;
-        }
-        int travel = width - available + 16;
-        double seconds = (System.nanoTime() / 1_000_000_000.0);
-        double cycle = (travel * 2.0) / Math.max(1, pixelsPerSecond);
-        double phase = (seconds % cycle) / cycle;
-        double eased = phase < 0.5 ? phase * 2.0 : (1.0 - phase) * 2.0;
-        return (int) (eased * travel);
+        return UiRenderText.marqueeOffset(value, available, pixelsPerSecond);
+    }
+
+    /** Transition easing used by every animated widget. */
+    public static float ease(float current, float target, float speed) {
+        return current + (target - current) * Math.min(1f, Math.max(0f, speed));
     }
 
     // -------------------------------------------------------------- textures
 
-    /**
-     * Draws a texture scaled into the given rectangle with an alpha tint.
-     *
-     * <p>Implemented with an explicit quad instead of {@code GuiGraphics#blit}
-     * so that arbitrary source sizes (Spotify covers are 640x640) map cleanly
-     * onto any destination size.</p>
-     */
     public static void image(GuiGraphics graphics, ResourceLocation texture,
                              float x, float y, float width, float height, float alpha) {
-        image(graphics, texture, x, y, width, height, 1f, 1f, 1f, alpha);
+        UiRenderText.image(graphics, texture, x, y, width, height, 1f, 1f, 1f, alpha);
     }
 
     public static void image(GuiGraphics graphics, ResourceLocation texture,
                              float x, float y, float width, float height,
                              float red, float green, float blue, float alpha) {
-        if (texture == null || width <= 0f || height <= 0f) {
-            return;
-        }
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        RenderSystem.setShaderTexture(0, texture);
-        RenderSystem.setShaderColor(red, green, blue, alpha);
-
-        Matrix4f matrix = graphics.pose().last().pose();
-        BufferBuilder buffer = Tesselator.getInstance()
-                .begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-        buffer.addVertex(matrix, x, y, 0f).setUv(0f, 0f);
-        buffer.addVertex(matrix, x, y + height, 0f).setUv(0f, 1f);
-        buffer.addVertex(matrix, x + width, y + height, 0f).setUv(1f, 1f);
-        buffer.addVertex(matrix, x + width, y, 0f).setUv(1f, 0f);
-        BufferUploader.drawWithShader(buffer.buildOrThrow());
-
-        RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
-        RenderSystem.disableBlend();
+        UiRenderText.image(graphics, texture, x, y, width, height, red, green, blue, alpha);
     }
 
-    /** Placeholder used while no artwork is available. */
+    /** Album artwork with a rounded mask and the hairline ring. */
+    public static void cover(GuiGraphics graphics, ResourceLocation texture,
+                             int x, int y, int size, float alpha) {
+        image(graphics, texture, x, y, size, size, alpha);
+        maskCorners(graphics, x, y, size, size, UiTheme.radiusControl(), UiTheme.surface());
+        roundedBorder(graphics, x, y, size, size, UiTheme.radiusControl(), UiTheme.ring(alpha));
+    }
+
+    /** Paints corners in the panel colour so a square texture reads as rounded. */
+    public static void maskCorners(GuiGraphics graphics, int x, int y, int width, int height,
+                                   int radius, int color) {
+        int r = Math.max(0, Math.min(radius, Math.min(width, height) / 2));
+        for (int i = 0; i < r; i++) {
+            int inset = cornerInset(r, i);
+            if (inset <= 0) {
+                continue;
+            }
+            graphics.fill(x, y + i, x + inset, y + i + 1, color);
+            graphics.fill(x + width - inset, y + i, x + width, y + i + 1, color);
+            graphics.fill(x, y + height - i - 1, x + inset, y + height - i, color);
+            graphics.fill(x + width - inset, y + height - i - 1, x + width, y + height - i, color);
+        }
+    }
+
+    /** Placeholder artwork: glass square with an accent bar chart. */
     public static void coverPlaceholder(GuiGraphics graphics, int x, int y, int size, float alpha) {
-        roundedRect(graphics, x, y, size, size, UiTheme.RADIUS_CONTROL,
-                UiTheme.withAlpha(UiTheme.SURFACE_ALT, alpha));
-        roundedBorder(graphics, x, y, size, size, UiTheme.RADIUS_CONTROL,
-                UiTheme.withAlpha(UiTheme.BORDER, alpha));
-        int inner = Math.max(4, size / 3);
-        int cx = x + size / 2;
-        int cy = y + size / 2;
-        graphics.fill(cx - inner / 2, cy - 1, cx + inner / 2, cy, UiTheme.accent(alpha * 0.8f));
-        graphics.fill(cx - inner / 3, cy + 2, cx + inner / 3, cy + 3, UiTheme.withAlpha(UiTheme.TEXT_MUTED, alpha));
+        glass(graphics, x, y, size, size, UiTheme.radiusControl(), alpha);
+        int inner = Math.max(10, size / 2);
+        verticalBars(graphics, x + (size - inner) / 2, y + (size - inner / 2) / 2, inner, inner / 2,
+                4, UiTheme.accent(0.6f * alpha), false, 7L);
     }
 
     // ------------------------------------------------------------------ icons
 
-    /** Vector-ish play triangle. */
     public static void playIcon(GuiGraphics graphics, int x, int y, int size, int color) {
         for (int i = 0; i < size; i++) {
             int height = size - 2 * Math.abs(i - size / 2);
@@ -290,8 +398,8 @@ public final class UiRender {
 
     public static void pauseIcon(GuiGraphics graphics, int x, int y, int size, int color) {
         int bar = Math.max(1, size / 3);
-        graphics.fill(x, y, x + bar, y + size, color);
-        graphics.fill(x + size - bar, y, x + size, y + size, color);
+        roundedRect(graphics, x, y, bar, size, 1, color);
+        roundedRect(graphics, x + size - bar, y, bar, size, 1, color);
     }
 
     public static void nextIcon(GuiGraphics graphics, int x, int y, int size, int color) {
@@ -334,16 +442,15 @@ public final class UiRender {
         }
     }
 
+    public static void closeIcon(GuiGraphics graphics, int x, int y, int size, int color) {
+        for (int i = 0; i < size; i++) {
+            graphics.fill(x + i, y + i, x + i + 1, y + i + 1, color);
+            graphics.fill(x + size - i - 1, y + i, x + size - i, y + i + 1, color);
+        }
+    }
+
     /** Small equaliser animation shown while a track is playing. */
     public static void equalizer(GuiGraphics graphics, int x, int y, int width, int height, int color, boolean animate) {
-        int bars = Math.max(3, width / 3);
-        int barWidth = Math.max(1, width / bars - 1);
-        double time = System.nanoTime() / 1_000_000_000.0;
-        for (int i = 0; i < bars; i++) {
-            double phase = animate ? Math.sin(time * 4.0 + i * 1.7) * 0.5 + 0.5 : 0.25;
-            int barHeight = (int) Math.max(1, phase * height);
-            int barX = x + i * (barWidth + 1);
-            graphics.fill(barX, y + height - barHeight, barX + barWidth, y + height, color);
-        }
+        verticalBars(graphics, x, y, width, height, Math.max(3, width / 4), color, animate, 0L);
     }
 }

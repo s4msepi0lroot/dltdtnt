@@ -153,8 +153,10 @@ public final class SpotifyManager {
         long now = System.nanoTime();
         // Spawning a PowerShell process is heavier than an HTTP call, so the
         // local source is polled a bit less aggressively.
-        long floor = usingLocalSource() ? 1000L : 700L;
-        long intervalNano = Math.max(floor, config.pollIntervalMs) * 1_000_000L;
+        // The local watcher process streams updates, so it can be read fast.
+        long floor = usingLocalSource() ? Math.max(80, config.localPollMs) : 700L;
+        long interval = usingLocalSource() ? floor : Math.max(floor, config.pollIntervalMs);
+        long intervalNano = interval * 1_000_000L;
         if (now - lastPollNano < intervalNano) {
             return;
         }
@@ -184,6 +186,9 @@ public final class SpotifyManager {
                 lastSuccessNano = System.nanoTime();
                 if (fetched.hasTrack() && fetched.coverUrl() != null) {
                     covers.request(fetched.coverUrl());
+                } else if (fetched.hasTrack()) {
+                    // No artwork in the media session: fall back to a lookup.
+                    covers.requestFallback(fetched.title(), fetched.artistLine());
                 }
                 if (!fetched.hasTrack() || SyncConfig.get().lyricsEnabled) {
                     lyrics.onPlayback(fetched);
@@ -280,17 +285,47 @@ public final class SpotifyManager {
     }
 
     public void setVolume(int percent) {
-        if (usingLocalSource()) {
-            // The media session API exposes no volume channel.
-            return;
-        }
+        int clamped = Math.max(0, Math.min(100, percent));
         PlaybackState current = state.get();
-        applyOptimistic(current.withVolume(percent));
+        applyOptimistic(current.withVolume(clamped));
+        boolean useLocal = usingLocalSource();
         network.execute(() -> {
-            api.volume(percent);
+            if (useLocal) {
+                // Windows per-application volume through the audio session API.
+                local.setVolume(clamped);
+            } else {
+                api.volume(clamped);
+            }
             sleep(300);
             poll();
         });
+    }
+
+    /**
+     * Opens the current track in the Spotify desktop app / web player.
+     *
+     * <p>The local media session does not expose a track link, so in that mode
+     * the title and artist are handed to Spotify search instead of doing
+     * nothing at all.</p>
+     */
+    public void openInSpotify() {
+        PlaybackState current = state.get();
+        String url = current.trackUrl();
+        if (url == null || url.isBlank()) {
+            if (current.hasTrack()) {
+                String query = (current.title() + " " + current.artistLine()).trim();
+                url = "https://open.spotify.com/search/"
+                        + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8)
+                        .replace("+", "%20");
+            } else {
+                url = "https://open.spotify.com";
+            }
+        }
+        try {
+            net.minecraft.Util.getPlatform().openUri(new java.net.URI(url));
+        } catch (Exception e) {
+            SpotifySync.LOGGER.warn("[Spotify Sync] could not open Spotify link", e);
+        }
     }
 
     public void toggleShuffle() {

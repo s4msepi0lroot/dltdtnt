@@ -7,360 +7,286 @@ import com.voidcanvas.spotifysync.client.screen.widget.VoidButton;
 import com.voidcanvas.spotifysync.client.screen.widget.VoidIconButton;
 import com.voidcanvas.spotifysync.client.screen.widget.VoidSlider;
 import com.voidcanvas.spotifysync.config.SyncConfig;
-import com.voidcanvas.spotifysync.lyrics.LyricLine;
-import com.voidcanvas.spotifysync.lyrics.TrackLyrics;
 import com.voidcanvas.spotifysync.spotify.PlaybackState;
-import net.minecraft.Util;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
-import java.net.URI;
-import java.util.List;
-
 /**
- * The expanded player.
+ * The expanded player: a floating obsidian shell with a bento layout.
  *
- * <p>Opened by clicking the mini player (or with the dedicated key). The layout
- * uses a strict grid so nothing collides: a 132px cover column on the left, a
- * text/controls column on the right, and fixed bands for the progress bar,
- * transport row, volume, metadata tiles and footer.</p>
+ * <p>Left column holds the album art card, the right column holds the track
+ * metadata, the seek bar, the transport controls and the volume. Every element
+ * lives in a fixed row so nothing can overlap, and the whole shell is scaled
+ * down automatically on small GUI scales instead of clipping.</p>
  */
 public final class ExpandedPlayerScreen extends Screen {
 
-    private static final int CARD_WIDTH = 432;
-    private static final int CARD_HEIGHT = 268;
-    private static final int COVER = 132;
-    private static final int PADDING = 18;
-    private static final int BUTTON_HEIGHT = 20;
+    private static final int SHELL_WIDTH = 470;
+    private static final int SHELL_HEIGHT = 320;
+    private static final int PADDING = 22;
+    private static final int COVER = 160;
+    private static final int GAP = 18;
 
-    /** Vertical bands, relative to the card top. */
-    private static final int BAND_PROGRESS = 108;
-    private static final int BAND_CONTROLS = 132;
-    private static final int BAND_VOLUME = 166;
-    private static final int BAND_TILES = 198;
+    private float shellScale = 1f;
+    private int shellX;
+    private int shellY;
 
-    private int cardX;
-    private int cardY;
-    private int progressX;
-    private int progressY;
-    private int progressWidth;
-
-    private VoidIconButton playPause;
-    private VoidIconButton shuffle;
-    private VoidIconButton repeat;
-    private boolean scrubbing;
-    private float openAnimation;
+    private VoidIconButton playButton;
+    private VoidSlider volumeSlider;
+    private VoidIconButton shuffleButton;
+    private VoidIconButton repeatButton;
 
     public ExpandedPlayerScreen() {
-        super(Component.translatable("spotifysync.player.title"));
+        super(Component.translatable("spotifysync.screen.player"));
     }
+
+    // --------------------------------------------------------------- geometry
+
+    private void computeShell() {
+        float scaleX = (float) (width - 20) / SHELL_WIDTH;
+        float scaleY = (float) (height - 20) / SHELL_HEIGHT;
+        shellScale = Math.max(0.55f, Math.min(1f, Math.min(scaleX, scaleY)));
+        shellX = (int) ((width - SHELL_WIDTH * shellScale) / 2f);
+        shellY = (int) ((height - SHELL_HEIGHT * shellScale) / 2f);
+    }
+
+    /** Converts a shell-space coordinate to a real screen coordinate. */
+    private int sx(int localX) {
+        return shellX + (int) (localX * shellScale);
+    }
+
+    private int sy(int localY) {
+        return shellY + (int) (localY * shellScale);
+    }
+
+    private int sw(int localWidth) {
+        return Math.max(1, (int) (localWidth * shellScale));
+    }
+
+    private double toLocalX(double mouseX) {
+        return (mouseX - shellX) / shellScale;
+    }
+
+    private double toLocalY(double mouseY) {
+        return (mouseY - shellY) / shellScale;
+    }
+
+    // ----------------------------------------------------------------- layout
 
     @Override
     protected void init() {
+        computeShell();
         SpotifyManager manager = SpotifyManager.get();
-        cardX = (width - CARD_WIDTH) / 2;
-        cardY = Math.max(4, (height - CARD_HEIGHT) / 2);
 
-        int contentX = cardX + PADDING + COVER + PADDING;
-        int contentRight = cardX + CARD_WIDTH - PADDING;
-        progressX = contentX;
-        progressY = cardY + BAND_PROGRESS;
-        progressWidth = contentRight - contentX;
+        int rightX = PADDING + COVER + GAP;
+        int rightWidth = SHELL_WIDTH - rightX - PADDING;
 
-        boolean extended = manager.supportsExtendedControls();
+        // Transport row.
+        int transportY = 196;
+        int big = 40;
+        int small = 30;
+        int centerX = rightX + rightWidth / 2;
 
-        // ---- transport row ------------------------------------------------
-        int size = 26;
-        int gap = 8;
-        int controlsY = cardY + BAND_CONTROLS;
-        int cursor = contentX;
+        addRenderableWidget(new VoidIconButton(sx(centerX - big / 2 - GAP - small), sy(transportY + (big - small) / 2),
+                sw(small), VoidIconButton.Icon.PREVIOUS,
+                Component.translatable("spotifysync.action.previous"), manager::previous));
 
-        addRenderableWidget(new VoidIconButton(cursor, controlsY + 2, size - 4,
-                VoidIconButton.Icon.PREVIOUS, Component.translatable("spotifysync.control.previous"),
-                manager::previous));
-        cursor += size - 4 + gap;
-
-        playPause = addRenderableWidget(new VoidIconButton(cursor, controlsY, size,
+        playButton = new VoidIconButton(sx(centerX - big / 2), sy(transportY), sw(big),
                 manager.state().playing() ? VoidIconButton.Icon.PAUSE : VoidIconButton.Icon.PLAY,
-                Component.translatable("spotifysync.control.play_pause"),
-                manager::togglePlayPause).filled());
-        cursor += size + gap;
+                Component.translatable("spotifysync.action.play_pause"), manager::togglePlayPause);
+        playButton.filled();
+        addRenderableWidget(playButton);
 
-        addRenderableWidget(new VoidIconButton(cursor, controlsY + 2, size - 4,
-                VoidIconButton.Icon.NEXT, Component.translatable("spotifysync.control.next"),
-                manager::next));
-        cursor += size - 4 + gap * 2;
+        addRenderableWidget(new VoidIconButton(sx(centerX + big / 2 + GAP), sy(transportY + (big - small) / 2),
+                sw(small), VoidIconButton.Icon.NEXT,
+                Component.translatable("spotifysync.action.next"), manager::next));
 
-        shuffle = addRenderableWidget(new VoidIconButton(cursor, controlsY + 2, size - 4,
-                VoidIconButton.Icon.SHUFFLE, Component.translatable("spotifysync.control.shuffle"),
-                manager::toggleShuffle));
-        cursor += size - 4 + gap;
+        shuffleButton = new VoidIconButton(sx(rightX), sy(transportY + (big - small) / 2), sw(small),
+                VoidIconButton.Icon.SHUFFLE, Component.translatable("spotifysync.action.shuffle"),
+                manager::toggleShuffle);
+        addRenderableWidget(shuffleButton);
 
-        repeat = addRenderableWidget(new VoidIconButton(cursor, controlsY + 2, size - 4,
-                VoidIconButton.Icon.REPEAT, Component.translatable("spotifysync.control.repeat"),
-                manager::cycleRepeat));
+        repeatButton = new VoidIconButton(sx(rightX + rightWidth - small), sy(transportY + (big - small) / 2),
+                sw(small), VoidIconButton.Icon.REPEAT, Component.translatable("spotifysync.action.repeat"),
+                manager::cycleRepeat);
+        addRenderableWidget(repeatButton);
 
-        // Shuffle / repeat / volume only exist on the Web API source.
-        shuffle.active = extended;
-        repeat.active = extended;
-
-        // ---- volume -------------------------------------------------------
-        int volumeWidth = 140;
-        VoidSlider volume = new VoidSlider(contentRight - volumeWidth, cardY + BAND_VOLUME, volumeWidth,
-                Component.translatable("spotifysync.player.volume"), 0, 100, 1,
+        // Volume row.
+        volumeSlider = new VoidSlider(sx(rightX), sy(246), sw(rightWidth),
+                Component.translatable("spotifysync.action.volume"), 0, 100, 1,
                 () -> {
-                    int level = SpotifyManager.get().state().volumePercent();
-                    return level < 0 ? 100 : level;
+                    int percent = SpotifyManager.get().state().volumePercent();
+                    return percent < 0 ? 100 : percent;
                 },
                 value -> SpotifyManager.get().setVolume((int) Math.round(value)),
                 value -> Math.round(value) + "%");
-        volume.active = extended;
-        addRenderableWidget(volume);
+        addRenderableWidget(volumeSlider);
 
-        // ---- footer -------------------------------------------------------
-        int footerY = cardY + CARD_HEIGHT - PADDING - BUTTON_HEIGHT;
-        addRenderableWidget(new VoidButton(cardX + PADDING, footerY, 96, BUTTON_HEIGHT,
-                Component.translatable("spotifysync.player.settings"), VoidButton.Style.UTILITY,
-                () -> minecraft.setScreen(new SpotifySettingsScreen(this))));
-
-        addRenderableWidget(new VoidButton(cardX + PADDING + 96 + 10, footerY, 118, BUTTON_HEIGHT,
-                Component.translatable("spotifysync.player.open_spotify"), VoidButton.Style.SECONDARY,
-                () -> {
-                    String url = SpotifyManager.get().state().trackUrl();
-                    if (url != null && !url.isEmpty()) {
-                        Util.getPlatform().openUri(URI.create(url));
-                    }
-                }));
-
-        addRenderableWidget(new VoidButton(contentRight - 80, footerY, 80, BUTTON_HEIGHT,
-                Component.translatable("spotifysync.player.close"), VoidButton.Style.GHOST,
-                this::onClose));
+        // Footer actions.
+        int footerY = SHELL_HEIGHT - PADDING - 26;
+        int buttonWidth = (SHELL_WIDTH - PADDING * 2 - GAP) / 2;
+        addRenderableWidget(new VoidButton(sx(PADDING), sy(footerY), sw(buttonWidth), sw(26),
+                Component.translatable("spotifysync.action.open_spotify"),
+                VoidButton.Style.PRIMARY, manager::openInSpotify));
+        addRenderableWidget(new VoidButton(sx(PADDING + buttonWidth + GAP), sy(footerY), sw(buttonWidth), sw(26),
+                Component.translatable("spotifysync.action.settings"),
+                VoidButton.Style.SECONDARY,
+                () -> minecraft.setScreen(new SpotifySettingsScreen())));
     }
 
     @Override
+    public void tick() {
+        SpotifyManager manager = SpotifyManager.get();
+        PlaybackState state = manager.state();
+        if (playButton != null) {
+            playButton.setIcon(state.playing() ? VoidIconButton.Icon.PAUSE : VoidIconButton.Icon.PLAY);
+        }
+        if (shuffleButton != null) {
+            shuffleButton.setHighlighted(state.shuffle());
+            shuffleButton.active = manager.supportsExtendedControls();
+        }
+        if (repeatButton != null) {
+            String repeat = state.repeatState();
+            repeatButton.setIcon("track".equals(repeat)
+                    ? VoidIconButton.Icon.REPEAT_ONE : VoidIconButton.Icon.REPEAT);
+            repeatButton.setHighlighted(!"off".equals(repeat));
+            repeatButton.active = manager.supportsExtendedControls();
+        }
+    }
+
+    // ----------------------------------------------------------------- render
+
+    @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        openAnimation = Math.min(1f, openAnimation + 0.12f);
+        computeShell();
+        SyncConfig config = SyncConfig.get();
         SpotifyManager manager = SpotifyManager.get();
         PlaybackState state = manager.state();
 
-        renderBackground(graphics, mouseX, mouseY, partialTick);
+        // Black viewport behind the floating shell.
+        graphics.fill(0, 0, width, height, UiTheme.scrim(0.72f));
 
-        // Keep the transport icons in sync with the live state.
-        if (playPause != null) {
-            playPause.setIcon(state.playing() ? VoidIconButton.Icon.PAUSE : VoidIconButton.Icon.PLAY);
-        }
-        if (shuffle != null) {
-            shuffle.setHighlighted(state.shuffle());
-        }
-        if (repeat != null) {
-            repeat.setHighlighted(!"off".equals(state.repeatState()));
-            repeat.setIcon("track".equals(state.repeatState())
-                    ? VoidIconButton.Icon.REPEAT_ONE : VoidIconButton.Icon.REPEAT);
+        graphics.pose().pushPose();
+        graphics.pose().translate(shellX, shellY, 0f);
+        graphics.pose().scale(shellScale, shellScale, 1f);
+
+        int tint = manager.covers().hasCover()
+                ? UiTheme.tintFromCover(manager.covers().averageColor())
+                : UiTheme.colors().accent;
+
+        UiRender.shell(graphics, 0, 0, SHELL_WIDTH, SHELL_HEIGHT, 1f);
+        UiRender.glowSphere(graphics, SHELL_WIDTH - 60, 40, 150, tint, 0.5f);
+        UiRender.glowSphere(graphics, 40, SHELL_HEIGHT - 40, 130, UiTheme.colors().accentSecondary, 0.28f);
+
+        int rightX = PADDING + COVER + GAP;
+        int rightWidth = SHELL_WIDTH - rightX - PADDING;
+
+        // Header row: mono status tag + close hint.
+        UiRender.statusTag(graphics, manager.sourceStatus(), PADDING, PADDING - 6,
+                manager.connected() ? UiTheme.colors().accent : UiTheme.colors().danger, 1f);
+        UiRender.monoRight(graphics, "ESC", SHELL_WIDTH - PADDING, PADDING - 6, 0.8f, UiTheme.textMuted(1f));
+
+        // Album art card.
+        int coverY = PADDING + 16;
+        UiRender.card(graphics, PADDING - 6, coverY - 6, COVER + 12, COVER + 12, 1f);
+        ResourceLocation texture = manager.covers().texture();
+        if (texture != null) {
+            UiRender.cover(graphics, texture, PADDING, coverY, COVER, 1f);
+        } else {
+            UiRender.coverPlaceholder(graphics, PADDING, coverY, COVER, 1f);
         }
 
-        drawCard(graphics, state, mouseX, mouseY);
-        // The card is painted first, the widgets sit on top of it.
-        for (var widget : renderables) {
-            widget.render(graphics, mouseX, mouseY, partialTick);
+        // Track metadata rows.
+        String title = state.hasTrack() ? state.title() : I18nFallback.noTrack();
+        UiRender.display(graphics, UiRender.ellipsize(title, (int) (rightWidth / 1.5f)),
+                rightX, PADDING + 18, 1.5f, UiTheme.textPrimary(1f));
+        UiRender.text(graphics, UiRender.ellipsize(state.hasTrack() ? state.artistLine() : "", rightWidth),
+                rightX, PADDING + 44, UiTheme.textSecondary(1f), false);
+        UiRender.mono(graphics, UiRender.ellipsize(state.album(), (int) (rightWidth / 0.8f)),
+                rightX, PADDING + 60, 0.8f, UiTheme.textMuted(1f));
+
+        // Glass info tiles (bento row).
+        int tileY = PADDING + 82;
+        int tileWidth = (rightWidth - GAP) / 2;
+        drawTile(graphics, rightX, tileY, tileWidth, 40, "DEVICE",
+                UiRender.ellipsize(orDash(state.deviceName()), (int) (tileWidth / 0.9f)));
+        drawTile(graphics, rightX + tileWidth + GAP, tileY, tileWidth, 40, "SOURCE",
+                manager.usingLocalSource() ? "LOCAL SESSION" : "WEB API");
+
+        // Seek bar row.
+        int barY = 158;
+        UiRender.progressBar(graphics, rightX, barY, rightWidth, 6, state.progressFraction(), 1f, true);
+        UiRender.mono(graphics, PlaybackState.formatTime(state.interpolatedProgressMs()),
+                rightX, barY + 10, 0.8f, UiTheme.textSecondary(1f));
+        UiRender.monoRight(graphics, PlaybackState.formatTime(state.durationMs()),
+                rightX + rightWidth, barY + 10, 0.8f, UiTheme.textSecondary(1f));
+
+        UiRender.hairline(graphics, PADDING, SHELL_HEIGHT - PADDING - 40, SHELL_WIDTH - PADDING * 2, 0.14f);
+
+        if (state.playing()) {
+            UiRender.equalizer(graphics, PADDING, coverY + COVER + 10, 60, 12,
+                    UiTheme.accent(0.8f), true);
+        }
+
+        graphics.pose().popPose();
+
+        // Widgets are positioned in screen space already.
+        for (var renderable : renderables) {
+            renderable.render(graphics, mouseX, mouseY, partialTick);
         }
     }
 
     @Override
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        graphics.fill(0, 0, width, height, UiTheme.withAlpha(UiTheme.SCRIM, openAnimation));
-        // Ambient wash tinted by the album art, rationed to one corner.
-        int tint = UiTheme.tintFromCover(SpotifyManager.get().covers().averageColor());
-        graphics.fillGradient(0, 0, width, height / 2,
-                UiTheme.withAlpha(tint, 0.10f * openAnimation), 0x00000000);
+        // Custom background is drawn in render().
     }
 
-    private void drawCard(GuiGraphics graphics, PlaybackState state, int mouseX, int mouseY) {
-        SyncConfig config = SyncConfig.get();
-        SpotifyManager manager = SpotifyManager.get();
-
-        UiRender.roundedRect(graphics, cardX, cardY, CARD_WIDTH, CARD_HEIGHT, UiTheme.RADIUS_CARD_LG,
-                UiTheme.withAlpha(UiTheme.SURFACE, openAnimation));
-        UiRender.accentWash(graphics, cardX, cardY, CARD_WIDTH / 3, CARD_HEIGHT, openAnimation);
-        UiRender.roundedBorder(graphics, cardX, cardY, CARD_WIDTH, CARD_HEIGHT, UiTheme.RADIUS_CARD_LG,
-                UiTheme.accent(0.45f * openAnimation));
-        if (config.grain) {
-            UiRender.grain(graphics, cardX + 1, cardY + 1, CARD_WIDTH - 2, CARD_HEIGHT - 2, 0.45f);
-        }
-
-        int coverX = cardX + PADDING;
-        int coverY = cardY + PADDING;
-        ResourceLocation cover = manager.covers().texture();
-        if (cover != null && state.hasTrack()) {
-            UiRender.image(graphics, cover, coverX, coverY, COVER, COVER, openAnimation);
-            UiRender.fadeToBlack(graphics, coverX, coverY + COVER - 20, COVER, 20, 0.75f);
-            UiRender.roundedBorder(graphics, coverX, coverY, COVER, COVER, UiTheme.RADIUS_CONTROL,
-                    UiTheme.withAlpha(UiTheme.BORDER, 0.9f));
-        } else {
-            UiRender.coverPlaceholder(graphics, coverX, coverY, COVER, openAnimation);
-        }
-
-        int contentX = coverX + COVER + PADDING;
-        int contentRight = cardX + CARD_WIDTH - PADDING;
-        int contentWidth = contentRight - contentX;
-
-        if (!manager.connected()) {
-            UiRender.textScaled(graphics, "Not connected", contentX, cardY + PADDING, 1.6f,
-                    UiTheme.TEXT_PRIMARY, false);
-            UiRender.accentRule(graphics, contentX, cardY + PADDING + 24, 40, 1f);
-            UiRender.textScaled(graphics, "open settings and pick a playback source",
-                    contentX, cardY + PADDING + 34, 0.85f, UiTheme.TEXT_SECONDARY, false);
-            return;
-        }
-
-        // ---- eyebrow --------------------------------------------------------
-        String eyebrow = state.episode() ? "NOW PLAYING \u00b7 PODCAST" : "NOW PLAYING";
-        UiRender.textScaled(graphics, eyebrow, contentX, cardY + PADDING, 0.75f,
-                UiTheme.TEXT_MUTED, false);
-
-        // ---- display title --------------------------------------------------
-        String title = state.hasTrack() ? state.title() : "Nothing playing";
-        float titleScale = 1.6f;
-        String fittedTitle = UiRender.ellipsize(title, (int) (contentWidth / titleScale));
-        UiRender.textScaled(graphics, fittedTitle, contentX, cardY + PADDING + 14, titleScale,
-                UiTheme.TEXT_PRIMARY, false);
-
-        UiRender.accentRule(graphics, contentX, cardY + PADDING + 38, 34, 0.9f);
-
-        // ---- artist + album -------------------------------------------------
-        UiRender.text(graphics, UiRender.ellipsize(state.artistLine(), contentWidth),
-                contentX, cardY + PADDING + 48, UiTheme.TEXT_SECONDARY, false);
-        UiRender.textScaled(graphics, UiRender.ellipsize(state.album(), (int) (contentWidth / 0.85f)),
-                contentX, cardY + PADDING + 64, 0.85f, UiTheme.TEXT_MUTED, false);
-
-        // ---- progress -------------------------------------------------------
-        long progress = state.interpolatedProgressMs();
-        boolean hoverProgress = isOverProgress(mouseX, mouseY);
-        UiRender.progressBar(graphics, progressX, progressY, progressWidth, hoverProgress ? 4 : 3,
-                state.progressFraction(), 1f, true);
-        UiRender.textScaled(graphics, PlaybackState.formatTime(progress), progressX, progressY + 9, 0.8f,
-                UiTheme.TEXT_SECONDARY, false);
-        String duration = PlaybackState.formatTime(state.durationMs());
-        UiRender.textScaled(graphics, duration,
-                contentRight - UiRender.font().width(duration) * 0.8f, progressY + 9, 0.8f,
-                UiTheme.TEXT_MUTED, false);
-        if (hoverProgress && state.durationMs() > 0) {
-            float fraction = (float) (mouseX - progressX) / (float) progressWidth;
-            String preview = PlaybackState.formatTime((long) (fraction * state.durationMs()));
-            UiRender.textScaledCentered(graphics, preview, mouseX, progressY - 14, 0.8f,
-                    UiTheme.accent(), true);
-        }
-
-        // ---- glass metadata tiles ------------------------------------------
-        int tileY = cardY + BAND_TILES;
-        int tileHeight = 22;
-        int tileGap = 8;
-        int tileWidth = (contentWidth - tileGap * 2) / 3;
-        drawTile(graphics, contentX, tileY, tileWidth, tileHeight, "SOURCE",
-                manager.usingLocalSource() ? "WINDOWS" : "WEB API");
-        drawTile(graphics, contentX + tileWidth + tileGap, tileY, tileWidth, tileHeight, "DEVICE",
-                state.deviceName().isEmpty() ? "\u2014" : state.deviceName());
-        String lyricsLabel;
-        TrackLyrics lyrics = manager.lyrics().lyrics();
-        if (manager.lyrics().loading()) {
-            lyricsLabel = "SEARCHING";
-        } else if (lyrics.isEmpty()) {
-            lyricsLabel = "NONE";
-        } else {
-            lyricsLabel = lyrics.synced() ? "SYNCED" : "PLAIN";
-        }
-        drawTile(graphics, contentX + (tileWidth + tileGap) * 2, tileY, tileWidth, tileHeight,
-                "LYRICS", lyricsLabel);
-
-        // ---- lyrics preview under the cover ---------------------------------
-        drawLyricsPreview(graphics, coverX, coverY + COVER + 12, COVER, state, lyrics);
-
-        // ---- status dot ------------------------------------------------------
-        int dotColor = manager.stale() ? 0xFFFF5A5A : UiTheme.ACCENT_SECONDARY;
-        UiRender.roundedRect(graphics, contentRight - 5, cardY + PADDING + 1, 4, 4, 2, dotColor);
-    }
-
-    private void drawTile(GuiGraphics graphics, int x, int y, int width, int height, String label, String value) {
+    /** Glass metadata tile: mono caption above a value line. */
+    private static void drawTile(GuiGraphics graphics, int x, int y, int width, int height,
+                                 String caption, String value) {
         UiRender.glassTile(graphics, x, y, width, height, 1f);
-        UiRender.textScaled(graphics, label, x + 6, y + 4, 0.6f, UiTheme.TEXT_SECONDARY, false);
-        UiRender.textScaled(graphics, UiRender.ellipsize(value, (int) ((width - 12) / 0.75f)),
-                x + 6, y + 12, 0.75f, UiTheme.TEXT_PRIMARY, false);
+        UiRender.mono(graphics, caption, x + 10, y + 9, 0.75f, UiTheme.textMuted(1f));
+        UiRender.text(graphics, UiRender.ellipsize(value, width - 20), x + 10, y + 22,
+                UiTheme.textPrimary(1f), false);
     }
 
-    private void drawLyricsPreview(GuiGraphics graphics, int x, int y, int width,
-                                   PlaybackState state, TrackLyrics lyrics) {
-        if (lyrics.isEmpty() || !state.hasTrack()) {
-            return;
-        }
-        long position = state.interpolatedProgressMs() + SyncConfig.get().lyricsOffsetMs;
-        List<LyricLine> lines = lyrics.lines();
-        int active = lyrics.synced()
-                ? lyrics.activeIndex(position)
-                : (int) Math.min(lines.size() - 1, (long) (lines.size() * state.progressFraction()));
-        if (active < 0) {
-            active = 0;
-        }
-        for (int offset = 0; offset < 4; offset++) {
-            int index = active + offset;
-            if (index >= lines.size()) {
-                break;
-            }
-            String text = lines.get(index).text();
-            if (text == null || text.isBlank()) {
-                continue;
-            }
-            int color = offset == 0 ? UiTheme.TEXT_PRIMARY
-                    : UiTheme.withAlpha(UiTheme.TEXT_MUTED, 0.85f - offset * 0.18f);
-            UiRender.textScaled(graphics, UiRender.ellipsize(text, (int) (width / 0.7f)),
-                    x, y + offset * 10, 0.7f, color, false);
-        }
+    private static String orDash(String value) {
+        return value == null || value.isBlank() ? "\u2014" : value;
     }
 
-    private boolean isOverProgress(int mouseX, int mouseY) {
-        return mouseX >= progressX && mouseX <= progressX + progressWidth
-                && mouseY >= progressY - 5 && mouseY <= progressY + 8;
-    }
+    // ------------------------------------------------------------- interaction
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button == 0 && isOverProgress((int) mouseX, (int) mouseY)) {
-            scrubbing = true;
-            SpotifyManager.get().seekFraction((float) ((mouseX - progressX) / progressWidth));
-            return true;
+        if (button == 0) {
+            double localX = toLocalX(mouseX);
+            double localY = toLocalY(mouseY);
+            int rightX = PADDING + COVER + GAP;
+            int rightWidth = SHELL_WIDTH - rightX - PADDING;
+            int barY = 158;
+            if (localY >= barY - 6 && localY <= barY + 12 && localX >= rightX && localX <= rightX + rightWidth) {
+                float fraction = (float) ((localX - rightX) / rightWidth);
+                SpotifyManager.get().seekFraction(fraction);
+                return true;
+            }
         }
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        if (scrubbing && button == 0) {
-            return true;
-        }
-        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
-    }
-
-    @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (scrubbing && button == 0) {
-            scrubbing = false;
-            SpotifyManager.get().seekFraction((float) ((mouseX - progressX) / progressWidth));
-            return true;
-        }
-        return super.mouseReleased(mouseX, mouseY, button);
-    }
-
-    @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
-        if (scrollY != 0.0) {
-            SpotifyManager.get().seekRelative(scrollY > 0 ? 5000L : -5000L);
-            return true;
-        }
-        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
-    }
-
-    @Override
     public boolean isPauseScreen() {
         return false;
+    }
+
+    /** Tiny helper so the empty state still reads nicely. */
+    private static final class I18nFallback {
+        private I18nFallback() {
+        }
+
+        static String noTrack() {
+            return Component.translatable("spotifysync.state.no_track").getString();
+        }
     }
 }

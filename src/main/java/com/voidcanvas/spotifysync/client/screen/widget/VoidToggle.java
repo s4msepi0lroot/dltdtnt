@@ -10,59 +10,88 @@ import net.minecraft.network.chat.Component;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Settings row: label on the left, small pill switch on the right. */
-public class VoidToggle extends AbstractWidget {
+/**
+ * Glass row with a mono label on the left and a lime pill switch on the right.
+ * The row is the click target, which makes it comfortable at any GUI scale.
+ */
+public final class VoidToggle extends AbstractWidget {
+
+    public static final int HEIGHT = 26;
 
     private final BooleanSupplier getter;
     private final Consumer<Boolean> setter;
     private final String description;
-    private float knobAnimation;
-    private float hoverAnimation;
+    private float knob;
+    private float hover;
 
     public VoidToggle(int x, int y, int width, Component label, String description,
                       BooleanSupplier getter, Consumer<Boolean> setter) {
-        super(x, y, width, 24, label);
+        super(x, y, width, HEIGHT, label);
         this.getter = getter;
         this.setter = setter;
         this.description = description;
-        this.knobAnimation = getter.getAsBoolean() ? 1f : 0f;
+        this.knob = getter.getAsBoolean() ? 1f : 0f;
+    }
+
+    @Override
+    public void onPress() {
+        boolean next = !getter.getAsBoolean();
+        setter.accept(next);
     }
 
     @Override
     protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         boolean value = getter.getAsBoolean();
-        knobAnimation += ((value ? 1f : 0f) - knobAnimation) * 0.28f;
-        hoverAnimation += ((isHovered() ? 1f : 0f) - hoverAnimation) * 0.25f;
+        boolean hovered = isHovered() && active;
+        hover = UiRender.ease(hover, hovered ? 1f : 0f, 0.25f);
+        knob = UiRender.ease(knob, value ? 1f : 0f, 0.3f);
+        float alpha = active ? 1f : 0.45f;
 
-        if (hoverAnimation > 0.02f) {
-            UiRender.roundedRect(graphics, getX() - 4, getY(), width + 8, height, UiTheme.RADIUS_CONTROL,
-                    UiTheme.withAlpha(UiTheme.SURFACE, hoverAnimation * 0.85f));
-        }
+        int x = getX();
+        int y = getY();
+        int width = getWidth();
+        int height = getHeight();
 
-        int labelColor = UiTheme.lerpColor(UiTheme.TEXT_PRIMARY, UiTheme.TEXT_PRIMARY, hoverAnimation);
-        UiRender.text(graphics, UiRender.ellipsize(getMessage().getString(), width - 70),
-                getX(), getY() + 4, labelColor, false);
-        if (description != null && !description.isEmpty()) {
-            UiRender.textScaled(graphics, UiRender.ellipsize(description, (int) ((width - 70) / 0.75f)),
-                    getX(), getY() + 14, 0.75f, UiTheme.TEXT_MUTED, false);
-        }
+        UiRender.roundedRect(graphics, x, y, width, height, UiTheme.radiusControl(),
+                UiTheme.glass(alpha * (0.8f + hover * 0.9f)));
+        UiRender.roundedBorder(graphics, x, y, width, height, UiTheme.radiusControl(),
+                hover > 0.5f ? UiTheme.accent(0.4f * alpha) : UiTheme.ring(alpha));
 
         int switchWidth = 26;
         int switchHeight = 12;
-        int switchX = getX() + width - switchWidth;
-        int switchY = getY() + (height - switchHeight) / 2;
-        int trackColor = UiTheme.lerpColor(UiTheme.TRACK, UiTheme.accent(0.85f), knobAnimation);
-        UiRender.roundedRect(graphics, switchX, switchY, switchWidth, switchHeight, switchHeight / 2, trackColor);
-        UiRender.roundedBorder(graphics, switchX, switchY, switchWidth, switchHeight, switchHeight / 2,
-                UiTheme.withAlpha(UiTheme.BORDER, 0.8f));
+        int switchX = x + width - switchWidth - 8;
+        int switchY = y + (height - switchHeight) / 2;
+
+        int labelWidth = switchX - x - 16;
+        String label = getMessage().getString();
+        UiRender.mono(graphics, fit(label, labelWidth, 0.8f), x + 8, y + (height - 7) / 2f, 0.8f,
+                value ? UiTheme.textPrimary(alpha) : UiTheme.textSecondary(alpha));
+
+        UiRender.pill(graphics, switchX, switchY, switchWidth, switchHeight,
+                value ? UiTheme.accent(alpha * 0.9f) : UiTheme.withAlpha(UiTheme.track(), alpha));
+        UiRender.pillBorder(graphics, switchX, switchY, switchWidth, switchHeight,
+                value ? UiTheme.accent(alpha) : UiTheme.ring(alpha));
+
         int knobSize = switchHeight - 4;
-        int knobX = (int) (switchX + 2 + knobAnimation * (switchWidth - knobSize - 4));
-        UiRender.roundedRect(graphics, knobX, switchY + 2, knobSize, knobSize, knobSize / 2, 0xFFFFFFFF);
+        int knobX = (int) (switchX + 2 + knob * (switchWidth - knobSize - 4));
+        UiRender.roundedRect(graphics, knobX, switchY + 2, knobSize, knobSize, knobSize / 2,
+                value ? UiTheme.withAlpha(UiTheme.onAccent(), alpha) : UiTheme.textSecondary(alpha));
     }
 
-    @Override
-    public void onClick(double mouseX, double mouseY) {
-        setter.accept(!getter.getAsBoolean());
+    private static String fit(String value, int available, float scale) {
+        if (available <= 0) {
+            return "";
+        }
+        String text = value;
+        while (text.length() > 1 && UiRender.monoWidth(text, scale) > available) {
+            text = text.substring(0, text.length() - 1);
+        }
+        return text.equals(value) ? value : text;
+    }
+
+    /** Optional helper copy shown by the settings screen under the row. */
+    public String description() {
+        return description;
     }
 
     @Override

@@ -31,13 +31,19 @@ import java.util.concurrent.TimeUnit;
 public final class WindowsMediaSource {
 
     /** Bump when the shipped script changes so it gets re-extracted. */
-    private static final String SCRIPT_VERSION = "1";
+    private static final String SCRIPT_VERSION = "2";
     private static final String SCRIPT_RESOURCE = "/spotifysync-smtc.ps1";
     private static final long PROCESS_TIMEOUT_SECONDS = 10L;
 
     private volatile String lastError = "";
     private volatile boolean available;
     private volatile boolean scriptReady;
+
+    /** Long-lived watcher process streaming one JSON line per sample. */
+    private volatile Process watcher;
+    private volatile Thread watcherThread;
+    private volatile JsonObject latest;
+    private volatile long latestNano;
 
     public static boolean supported() {
         return System.getProperty("os.name", "").toLowerCase().contains("win");
@@ -105,7 +111,10 @@ public final class WindowsMediaSource {
      * @return a snapshot, or {@code null} when the session could not be read.
      */
     public PlaybackState poll() {
-        JsonObject json = run("status", "");
+        JsonObject json = readWatcher();
+        if (json == null) {
+            json = run("status", "");
+        }
         if (json == null) {
             available = false;
             return null;
@@ -184,6 +193,103 @@ public final class WindowsMediaSource {
 
     public void seek(long positionMs) {
         run("seek", String.valueOf(Math.max(0L, positionMs)));
+    }
+
+    /** Sets the Spotify desktop client's own volume (0-100). */
+    public void setVolume(int percent) {
+        run("volume", String.valueOf(Math.max(0, Math.min(100, percent))));
+    }
+
+    // ----------------------------------------------------------------- watcher
+
+    /**
+     * Returns the newest sample produced by the streaming watcher process,
+     * starting it when needed.
+     *
+     * <p>Spawning PowerShell for every poll cost hundreds of milliseconds and
+     * was the reason the playback position and the lyrics trailed behind the
+     * music. One long-lived process pushes fresh samples continuously.</p>
+     */
+    private JsonObject readWatcher() {
+        ensureWatcher();
+        JsonObject snapshot = latest;
+        if (snapshot == null) {
+            return null;
+        }
+        if (System.nanoTime() - latestNano > 5_000_000_000L) {
+            return null;
+        }
+        return snapshot;
+    }
+
+    private synchronized void ensureWatcher() {
+        Process current = watcher;
+        if (current != null && current.isAlive()) {
+            return;
+        }
+        if (!supported() || !ensureScript()) {
+            return;
+        }
+        SyncConfig config = SyncConfig.get();
+        try {
+            ProcessBuilder builder = new ProcessBuilder(
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-ExecutionPolicy", "Bypass",
+                    "-File", scriptPath().toString(),
+                    "-Command", "watch",
+                    "-Filter", config.localSessionFilter,
+                    "-OutDir", coverDir().toString(),
+                    "-IntervalMs", String.valueOf(Math.max(80, config.localPollMs)));
+            builder.redirectErrorStream(false);
+            Process process = builder.start();
+            watcher = process;
+            Thread thread = new Thread(() -> pumpWatcher(process), "SpotifySync-SMTC-watch");
+            thread.setDaemon(true);
+            watcherThread = thread;
+            thread.start();
+        } catch (Exception e) {
+            lastError = "could not start windows watcher";
+            SpotifySync.LOGGER.debug("[Spotify Sync] watcher start failed", e);
+        }
+    }
+
+    private void pumpWatcher(Process process) {
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(process.getInputStream(), StandardCharsets.US_ASCII))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String text = line.trim();
+                int brace = text.indexOf('{');
+                if (brace < 0) {
+                    continue;
+                }
+                try {
+                    latest = JsonParser.parseString(text.substring(brace)).getAsJsonObject();
+                    latestNano = System.nanoTime();
+                } catch (Exception ignored) {
+                    // partial line, wait for the next sample
+                }
+            }
+        } catch (Exception e) {
+            SpotifySync.LOGGER.debug("[Spotify Sync] watcher stream ended", e);
+        }
+    }
+
+    /** Stops the watcher, e.g. when the session filter or interval changes. */
+    public synchronized void stopWatcher() {
+        Process process = watcher;
+        watcher = null;
+        latest = null;
+        if (process != null) {
+            process.destroyForcibly();
+        }
+        Thread thread = watcherThread;
+        watcherThread = null;
+        if (thread != null) {
+            thread.interrupt();
+        }
     }
 
     // ----------------------------------------------------------------- process

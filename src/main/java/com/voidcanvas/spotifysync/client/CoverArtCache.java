@@ -77,6 +77,70 @@ public final class CoverArtCache {
         }
     }
 
+    /**
+     * Requests artwork for a track that has no cover URL (the Windows media
+     * session sometimes hands out no thumbnail at all). The iTunes search API
+     * is used as a free artwork fallback so the player never shows an empty
+     * square.
+     */
+    public void requestFallback(String title, String artist) {
+        if (texture != null || title == null || title.isBlank()) {
+            return;
+        }
+        String query = (title + " " + (artist == null ? "" : artist)).trim();
+        String key = "itunes:" + query;
+        if (Objects.equals(key, loadedUrl) || Objects.equals(key, requestedUrl)) {
+            return;
+        }
+        requestedUrl = key;
+        executor.execute(() -> {
+            try {
+                String encoded = java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
+                HttpRequest request = HttpRequest.newBuilder(URI.create(
+                                "https://itunes.apple.com/search?term=" + encoded + "&entity=song&limit=1"))
+                        .timeout(Duration.ofSeconds(12))
+                        .header("User-Agent", "SpotifySync-Minecraft/1.0.0")
+                        .GET()
+                        .build();
+                HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() / 100 != 2) {
+                    requestedUrl = null;
+                    return;
+                }
+                com.google.gson.JsonObject root = com.google.gson.JsonParser.parseString(response.body())
+                        .getAsJsonObject();
+                com.google.gson.JsonArray results = root.getAsJsonArray("results");
+                if (results == null || results.isEmpty()) {
+                    requestedUrl = null;
+                    return;
+                }
+                com.google.gson.JsonObject first = results.get(0).getAsJsonObject();
+                if (!first.has("artworkUrl100")) {
+                    requestedUrl = null;
+                    return;
+                }
+                String artwork = first.get("artworkUrl100").getAsString()
+                        .replace("100x100", "600x600");
+                HttpRequest imageRequest = HttpRequest.newBuilder(URI.create(artwork))
+                        .timeout(Duration.ofSeconds(15))
+                        .header("User-Agent", "SpotifySync-Minecraft/1.0.0")
+                        .GET()
+                        .build();
+                HttpResponse<byte[]> imageResponse = http.send(imageRequest,
+                        HttpResponse.BodyHandlers.ofByteArray());
+                if (imageResponse.statusCode() / 100 != 2) {
+                    requestedUrl = null;
+                    return;
+                }
+                byte[] bytes = imageResponse.body();
+                Minecraft.getInstance().execute(() -> upload(key, bytes));
+            } catch (Exception e) {
+                requestedUrl = null;
+                SpotifySync.LOGGER.debug("[Spotify Sync] artwork fallback failed", e);
+            }
+        });
+    }
+
     private static boolean isLocalPath(String url) {
         return url.startsWith("file:") || url.length() > 2 && url.charAt(1) == ':';
     }
@@ -87,11 +151,14 @@ public final class CoverArtCache {
             String raw = url.startsWith("file:") ? url.substring("file:".length()) : url;
             java.nio.file.Path path = java.nio.file.Paths.get(raw);
             if (!java.nio.file.Files.isRegularFile(path)) {
+                // Allow a later retry once the file has been written.
+                requestedUrl = null;
                 return;
             }
             byte[] bytes = java.nio.file.Files.readAllBytes(path);
             Minecraft.getInstance().execute(() -> upload(url, bytes));
         } catch (Exception e) {
+            requestedUrl = null;
             SpotifySync.LOGGER.debug("[Spotify Sync] local cover read failed", e);
         }
     }
@@ -105,12 +172,14 @@ public final class CoverArtCache {
                     .build();
             HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() / 100 != 2) {
+                requestedUrl = null;
                 return;
             }
             byte[] bytes = response.body();
             Minecraft minecraft = Minecraft.getInstance();
             minecraft.execute(() -> upload(url, bytes));
         } catch (Exception e) {
+            requestedUrl = null;
             SpotifySync.LOGGER.debug("[Spotify Sync] cover download failed", e);
         }
     }
@@ -139,6 +208,7 @@ public final class CoverArtCache {
                 minecraft.getTextureManager().release(previous);
             }
         } catch (Exception e) {
+            requestedUrl = null;
             SpotifySync.LOGGER.debug("[Spotify Sync] cover upload failed", e);
         }
     }

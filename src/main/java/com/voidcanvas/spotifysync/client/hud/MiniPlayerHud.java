@@ -13,21 +13,23 @@ import net.minecraft.client.gui.LayeredDraw;
 import net.minecraft.resources.ResourceLocation;
 
 /**
- * The always-on mini player.
+ * The always-on mini player, rebuilt for the Obsidian and Lime system.
  *
- * <p>Anatomy (void-canvas card): square album art on the left, title in white,
- * artist in {@code #999999}, a hairline accent rule, a thin progress bar and a
- * mono timecode. Rendered both as a HUD layer and, when a screen with a cursor
- * is open, on top of that screen where it becomes clickable.</p>
+ * <p>Anatomy: a floating glass card with a lime glow sphere behind the album
+ * art, a mono status tag, the track title in tight display type, the artist in
+ * secondary white, a hairline, a lime progress bar and a mono timecode. Every
+ * band has its own fixed row so nothing can overlap, and the card grows when
+ * the cover is hidden instead of squeezing the text.</p>
  */
 public final class MiniPlayerHud implements LayeredDraw.Layer {
 
     public static final MiniPlayerHud INSTANCE = new MiniPlayerHud();
 
     /** Layout constants (GUI pixels). */
-    private static final int WIDTH = 196;
-    private static final int HEIGHT = 56;
-    private static final int PADDING = 8;
+    private static final int WIDTH = 216;
+    private static final int HEIGHT = 70;
+    private static final int PADDING = 10;
+    private static final int COVER = 50;
 
     private float appearAnimation;
     private float hoverAnimation;
@@ -82,149 +84,136 @@ public final class MiniPlayerHud implements LayeredDraw.Layer {
             lastVisible = false;
             return;
         }
+
         SpotifyManager manager = SpotifyManager.get();
         PlaybackState state = manager.state();
         boolean hasTrack = state.hasTrack();
-        boolean connected = manager.connected();
-
-        if (!connected || (config.hideWhenIdle && !hasTrack)) {
-            appearAnimation += (0f - appearAnimation) * 0.2f;
+        if (!hasTrack && config.hideWhenIdle) {
+            appearAnimation = UiRender.ease(appearAnimation, 0f, 0.15f);
             if (appearAnimation < 0.02f) {
                 lastVisible = false;
                 return;
             }
         } else {
-            appearAnimation += (1f - appearAnimation) * 0.2f;
+            appearAnimation = UiRender.ease(appearAnimation, 1f, 0.15f);
         }
 
-        float scale = config.hudScale;
-        int screenWidth = (int) (graphics.guiWidth() / scale);
-        int screenHeight = (int) (graphics.guiHeight() / scale);
-        int x = config.hudAnchor.resolveX(screenWidth, WIDTH, config.hudOffsetX);
-        int y = config.hudAnchor.resolveY(screenHeight, HEIGHT, config.hudOffsetY);
+        boolean showCover = config.showCover;
+        int width = WIDTH;
+        int height = HEIGHT;
 
-        lastX = (int) (x * scale);
-        lastY = (int) (y * scale);
-        lastWidth = (int) (WIDTH * scale);
-        lastHeight = (int) (HEIGHT * scale);
+        int screenWidth = graphics.guiWidth();
+        int screenHeight = graphics.guiHeight();
+        float scale = config.hudScale;
+
+        int scaledWidth = (int) (width * scale);
+        int scaledHeight = (int) (height * scale);
+        int x = anchorX(config.hudAnchor, screenWidth, scaledWidth) + config.hudOffsetX;
+        int y = anchorY(config.hudAnchor, screenHeight, scaledHeight) + config.hudOffsetY;
+        // Keep the card fully on screen at any scale or offset.
+        x = Math.max(2, Math.min(screenWidth - scaledWidth - 2, x));
+        y = Math.max(2, Math.min(screenHeight - scaledHeight - 2, y));
+
+        lastX = x;
+        lastY = y;
+        lastWidth = scaledWidth;
+        lastHeight = scaledHeight;
         lastVisible = true;
 
         boolean hovered = interactive && isMouseOver(mouseX, mouseY);
-        hoverAnimation += ((hovered ? 1f : 0f) - hoverAnimation) * 0.22f;
+        hoverAnimation = UiRender.ease(hoverAnimation, hovered ? 1f : 0f, 0.2f);
 
-        float alpha = config.hudOpacity * easeOut(appearAnimation);
+        float alpha = config.hudOpacity * Math.min(1f, appearAnimation);
 
         graphics.pose().pushPose();
+        graphics.pose().translate(x, y, 0f);
         graphics.pose().scale(scale, scale, 1f);
+        // Floating card animation from the design system (6s ease-in-out).
+        float floatOffset = (float) Math.sin(System.nanoTime() / 1_000_000_000.0 * (Math.PI * 2 / 6.0)) * 1.6f;
+        graphics.pose().translate(0f, floatOffset, 0f);
 
-        drawCard(graphics, x, y, state, connected, alpha, hovered);
+        drawCard(graphics, manager, state, config, width, height, showCover, alpha, hovered);
 
         graphics.pose().popPose();
     }
 
-    private void drawCard(GuiGraphics graphics, int x, int y, PlaybackState state,
-                          boolean connected, float alpha, boolean hovered) {
-        SyncConfig config = SyncConfig.get();
-        SpotifyManager manager = SpotifyManager.get();
+    private void drawCard(GuiGraphics graphics, SpotifyManager manager, PlaybackState state, SyncConfig config,
+                          int width, int height, boolean showCover, float alpha, boolean hovered) {
+        int tint = manager.covers().hasCover()
+                ? UiTheme.tintFromCover(manager.covers().averageColor())
+                : UiTheme.colors().accent;
 
-        // Base surface: near-black card, hairline border, accent on hover.
-        UiRender.roundedRect(graphics, x, y, WIDTH, HEIGHT, UiTheme.RADIUS_CARD,
-                UiTheme.withAlpha(UiTheme.SURFACE, alpha * 0.94f));
-        UiRender.accentWash(graphics, x, y, WIDTH / 2, HEIGHT, alpha * hoverAnimation);
-        UiRender.roundedBorder(graphics, x, y, WIDTH, HEIGHT, UiTheme.RADIUS_CARD,
-                UiTheme.lerpColor(UiTheme.withAlpha(UiTheme.BORDER, alpha),
-                        UiTheme.accent(alpha * 0.75f), hoverAnimation));
-        if (config.grain) {
-            UiRender.grain(graphics, x + 1, y + 1, WIDTH - 2, HEIGHT - 2, alpha * 0.5f);
+        UiRender.glowSphere(graphics, width / 4, height / 2, 46, tint, alpha * (0.6f + 0.4f * hoverAnimation));
+        UiRender.glass(graphics, 0, 0, width, height, alpha);
+        if (hoverAnimation > 0.01f) {
+            UiRender.roundedBorder(graphics, 0, 0, width, height, UiTheme.radiusCard(),
+                    UiTheme.accent(0.4f * hoverAnimation * alpha));
         }
 
-        int contentX = x + PADDING;
-        int coverSize = HEIGHT - PADDING * 2;
-
-        // ---- album art -----------------------------------------------------
-        if (config.showCover) {
-            ResourceLocation cover = manager.covers().texture();
-            if (cover != null && state.hasTrack()) {
-                UiRender.image(graphics, cover, contentX, y + PADDING, coverSize, coverSize, alpha);
-                UiRender.roundedBorder(graphics, contentX, y + PADDING, coverSize, coverSize,
-                        UiTheme.RADIUS_CONTROL, UiTheme.withAlpha(UiTheme.BORDER, alpha * 0.8f));
+        int contentX = PADDING;
+        if (showCover) {
+            int coverY = (height - COVER) / 2;
+            ResourceLocation texture = manager.covers().texture();
+            if (texture != null) {
+                UiRender.image(graphics, texture, PADDING, coverY, COVER, COVER, alpha);
+                UiRender.roundedBorder(graphics, PADDING, coverY, COVER, COVER,
+                        UiTheme.radiusControl(), UiTheme.ring(alpha));
             } else {
-                UiRender.coverPlaceholder(graphics, contentX, y + PADDING, coverSize, alpha);
+                UiRender.coverPlaceholder(graphics, PADDING, coverY, COVER, alpha);
             }
-            contentX += coverSize + PADDING;
+            contentX = PADDING + COVER + 10;
         }
 
-        int textWidth = x + WIDTH - PADDING - contentX;
+        int textWidth = width - contentX - PADDING;
 
-        if (!connected) {
-            UiRender.text(graphics, "SPOTIFY SYNC", contentX, y + PADDING + 2,
-                    UiTheme.withAlpha(UiTheme.TEXT_PRIMARY, alpha), false);
-            UiRender.accentRule(graphics, contentX, y + PADDING + 16, 24, alpha);
-            UiRender.textScaled(graphics, UiRender.ellipsize("not connected", (int) (textWidth / 0.75f)),
-                    contentX, y + PADDING + 22, 0.75f, UiTheme.withAlpha(UiTheme.TEXT_MUTED, alpha), false);
-            return;
+        // Row 1: mono status tag.
+        String status = state.hasTrack()
+                ? (state.playing() ? "NOW PLAYING" : "PAUSED")
+                : manager.connected() ? "IDLE" : "OFFLINE";
+        UiRender.statusTag(graphics, status, contentX, PADDING - 2,
+                state.playing() ? UiTheme.colors().accent : UiTheme.colors().textMuted, alpha);
+
+        if (state.playing()) {
+            UiRender.equalizer(graphics, contentX + textWidth - 14, PADDING - 3, 12, 8,
+                    UiTheme.accent(0.85f * alpha), true);
         }
 
-        if (!state.hasTrack()) {
-            UiRender.text(graphics, "Nothing playing", contentX, y + PADDING + 2,
-                    UiTheme.withAlpha(UiTheme.TEXT_PRIMARY, alpha), false);
-            UiRender.accentRule(graphics, contentX, y + PADDING + 16, 24, alpha);
-            UiRender.textScaled(graphics, UiRender.ellipsize(manager.everSynced()
-                            ? "start playback in spotify" : "waiting for spotify\u2026",
-                            (int) (textWidth / 0.75f)),
-                    contentX, y + PADDING + 22, 0.75f, UiTheme.withAlpha(UiTheme.TEXT_MUTED, alpha), false);
-            return;
-        }
+        // Row 2: title in display type.
+        String title = state.hasTrack() ? state.title() : "Spotify Sync";
+        UiRender.display(graphics, UiRender.ellipsize(title, (int) (textWidth / 0.95f)),
+                contentX, PADDING + 11, 0.95f, UiTheme.textPrimary(alpha));
 
-        // ---- title (marquee when too long) ---------------------------------
-        String title = state.title();
-        int titleOffset = UiRender.marqueeOffset(title, textWidth, 18);
-        graphics.enableScissor(contentX, y + PADDING, contentX + textWidth, y + PADDING + 13);
-        UiRender.text(graphics, title, contentX - titleOffset, y + PADDING + 2,
-                UiTheme.withAlpha(UiTheme.TEXT_PRIMARY, alpha), false);
-        graphics.disableScissor();
+        // Row 3: artist.
+        String artist = state.hasTrack() ? state.artistLine() : manager.sourceStatus();
+        UiRender.text(graphics, UiRender.ellipsize(artist, textWidth), contentX, PADDING + 23,
+                UiTheme.textSecondary(alpha), false);
 
-        // ---- artist --------------------------------------------------------
-        String artist = state.artistLine();
-        UiRender.textScaled(graphics, UiRender.ellipsize(artist, (int) (textWidth / 0.85f)),
-                contentX, y + PADDING + 16, 0.85f,
-                UiTheme.withAlpha(UiTheme.TEXT_SECONDARY, alpha), false);
-
-        // ---- equaliser + timecode -----------------------------------------
-        int rowY = y + HEIGHT - PADDING - 9;
-        UiRender.equalizer(graphics, contentX, rowY, 12, 7, UiTheme.accent(alpha), state.playing());
-
-        long progress = state.interpolatedProgressMs();
-        if (config.showTimecode) {
-            String timecode = PlaybackState.formatTime(progress) + " / " + PlaybackState.formatTime(state.durationMs());
-            UiRender.textScaled(graphics, timecode,
-                    x + WIDTH - PADDING - UiRender.font().width(timecode) * 0.75f, rowY,
-                    0.75f, UiTheme.withAlpha(UiTheme.TEXT_MUTED, alpha), false);
-        }
-
-        // ---- progress bar --------------------------------------------------
+        // Row 4: progress + timecode.
+        int barY = height - PADDING - 9;
         if (config.showProgressBar) {
-            int barY = y + HEIGHT - 5;
-            UiRender.progressBar(graphics, x + PADDING, barY, WIDTH - PADDING * 2, 2,
+            UiRender.progressBar(graphics, contentX, barY, textWidth, 3,
                     state.progressFraction(), alpha, false);
         }
-
-        // ---- hover affordance ---------------------------------------------
-        if (hoverAnimation > 0.05f) {
-            String hint = "open player";
-            UiRender.textScaled(graphics, hint,
-                    x + WIDTH - PADDING - UiRender.font().width(hint) * 0.7f, y + PADDING,
-                    0.7f, UiTheme.accent(alpha * hoverAnimation), false);
-        }
-
-        if (manager.stale()) {
-            UiRender.roundedRect(graphics, x + WIDTH - 9, y + 4, 4, 4, 2,
-                    UiTheme.withAlpha(0xFFFF5A5A, alpha));
+        if (config.showTimecode && state.hasTrack()) {
+            String elapsed = PlaybackState.formatTime(state.interpolatedProgressMs());
+            String total = PlaybackState.formatTime(state.durationMs());
+            UiRender.mono(graphics, elapsed, contentX, barY + 5, 0.65f, UiTheme.textMuted(alpha));
+            UiRender.monoRight(graphics, total, contentX + textWidth, barY + 5, 0.65f, UiTheme.textMuted(alpha));
         }
     }
 
-    private static float easeOut(float t) {
-        float clamped = Math.max(0f, Math.min(1f, t));
-        return 1f - (1f - clamped) * (1f - clamped);
+    private static int anchorX(HudAnchor anchor, int screenWidth, int width) {
+        return switch (anchor) {
+            case TOP_LEFT, BOTTOM_LEFT -> 8;
+            case TOP_RIGHT, BOTTOM_RIGHT -> screenWidth - width - 8;
+            default -> (screenWidth - width) / 2;
+        };
+    }
+
+    private static int anchorY(HudAnchor anchor, int screenHeight, int height) {
+        return switch (anchor) {
+            case BOTTOM_LEFT, BOTTOM_RIGHT -> screenHeight - height - 8;
+            default -> 8;
+        };
     }
 }
