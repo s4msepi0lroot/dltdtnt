@@ -4,7 +4,6 @@ import dev.riftspotify.client.config.RiftConfig;
 import dev.riftspotify.client.spotify.SpotifyClient;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -26,11 +25,23 @@ public final class SpotifySettingsScreen extends Screen {
             if (SpotifyClient.connected()) SpotifyClient.disconnect(); else SpotifyClient.login(clientId.getValue());
         }).bounds(left, 136, 210, 28).build());
         addRenderableWidget(Button.builder(Component.literal("OPEN FULL PLAYER"), b -> minecraft.setScreen(new ExpandedPlayerScreen(this))).bounds(left + 230, 136, 210, 28).build());
-        addRenderableWidget(new Checkbox(left, 188, 440, 20, Component.literal("Show compact player on every HUD / screen"), cfg.showMiniPlayer, (box, selected) -> { cfg.showMiniPlayer = selected; cfg.save(); }));
-        addRenderableWidget(new Checkbox(left, 216, 440, 20, Component.literal("Show synced lyrics at the bottom of the HUD"), cfg.showHudLyrics, (box, selected) -> { cfg.showHudLyrics = selected; cfg.save(); }));
-        addRenderableWidget(new Checkbox(left, 244, 440, 20, Component.literal("Show lyrics floating around the player in 3D"), cfg.showWorldLyrics, (box, selected) -> { cfg.showWorldLyrics = selected; cfg.save(); }));
-        addRenderableWidget(new Checkbox(left, 272, 440, 20, Component.literal("Fetch lyrics automatically (LRCLIB)"), cfg.autoFetchLyrics, (box, selected) -> { cfg.autoFetchLyrics = selected; cfg.save(); }));
+        addRenderableWidget(Button.builder(Component.literal(toggleLabel("Show compact player on every HUD / screen", cfg.showMiniPlayer)), b -> {
+            cfg.showMiniPlayer = !cfg.showMiniPlayer; cfg.save();
+        }).bounds(left, 184, 440, 24).build());
+        addRenderableWidget(Button.builder(Component.literal(toggleLabel("Show synced lyrics at the bottom of the HUD", cfg.showHudLyrics)), b -> {
+            cfg.showHudLyrics = !cfg.showHudLyrics; cfg.save();
+        }).bounds(left, 214, 440, 24).build());
+        addRenderableWidget(Button.builder(Component.literal(toggleLabel("Show lyrics floating around the player in 3D", cfg.showWorldLyrics)), b -> {
+            cfg.showWorldLyrics = !cfg.showWorldLyrics; cfg.save();
+        }).bounds(left, 244, 440, 24).build());
+        addRenderableWidget(Button.builder(Component.literal(toggleLabel("Fetch lyrics automatically (LRCLIB)", cfg.autoFetchLyrics)), b -> {
+            cfg.autoFetchLyrics = !cfg.autoFetchLyrics; cfg.save();
+        }).bounds(left, 274, 440, 24).build());
         addRenderableWidget(Button.builder(Component.literal("BACK"), b -> minecraft.setScreen(parent)).bounds(left, height - 44, 90, 26).build());
+    }
+
+    private static String toggleLabel(String label, boolean enabled) {
+        return (enabled ? "[ON]  " : "[OFF] ") + label;
     }
 
     @Override public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
