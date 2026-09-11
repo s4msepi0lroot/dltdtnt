@@ -4,9 +4,11 @@ import com.mojang.blaze3d.platform.InputConstants;
 import dev.riftspotify.client.ui.SpotifySettingsScreen;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.common.NeoForge;
 import org.lwjgl.glfw.GLFW;
 
 public final class ModKeyMappings {
@@ -16,11 +18,13 @@ public final class ModKeyMappings {
 
     private ModKeyMappings() {}
 
-    public static void register() {
-        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.register(ModKeyMappings.class);
+    public static void register(IEventBus modEventBus) {
+        // RegisterKeyMappingsEvent is an IModBusEvent and must use the mod event bus.
+        modEventBus.addListener(ModKeyMappings::registerKeys);
+        // ClientTickEvent is a runtime event and belongs on the common NeoForge bus.
+        NeoForge.EVENT_BUS.register(ModKeyMappings.class);
     }
 
-    @SubscribeEvent
     public static void registerKeys(RegisterKeyMappingsEvent event) {
         event.register(OPEN_MENU);
     }

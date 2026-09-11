@@ -1,0 +1,87 @@
+--- a/src/main/java/dev/riftspotify/RiftSpotify.java
++++ b/src/main/java/dev/riftspotify/RiftSpotify.java
+@@ -2,15 +2,15 @@
+ 
+ import dev.riftspotify.client.ClientBootstrap;
+ import net.neoforged.api.distmarker.Dist;
++import net.neoforged.bus.api.IEventBus;
+ import net.neoforged.fml.ModContainer;
+ import net.neoforged.fml.common.Mod;
+-import net.neoforged.bus.api.IEventBus;
+ 
+ @Mod(value = RiftSpotify.MOD_ID, dist = Dist.CLIENT)
+ public final class RiftSpotify {
+     public static final String MOD_ID = "riftspotify";
+ 
+     public RiftSpotify(IEventBus modEventBus, ModContainer modContainer) {
+-        ClientBootstrap.register();
++        ClientBootstrap.register(modEventBus);
+     }
+ }
+--- a/src/main/java/dev/riftspotify/client/ClientBootstrap.java
++++ b/src/main/java/dev/riftspotify/client/ClientBootstrap.java
+@@ -3,6 +3,7 @@
+ import dev.riftspotify.client.input.ModKeyMappings;
+ import dev.riftspotify.client.overlay.ClientEvents;
+ import dev.riftspotify.client.spotify.SpotifyClient;
++import net.neoforged.bus.api.IEventBus;
+ import net.neoforged.neoforge.common.NeoForge;
+ 
+ public final class ClientBootstrap {
+@@ -10,10 +11,10 @@
+ 
+     private ClientBootstrap() {}
+ 
+-    public static void register() {
++    public static void register(IEventBus modEventBus) {
+         if (registered) return;
+         registered = true;
+-        ModKeyMappings.register();
++        ModKeyMappings.register(modEventBus);
+         SpotifyClient.initialize();
+         NeoForge.EVENT_BUS.register(ClientEvents.class);
+     }
+--- a/src/main/java/dev/riftspotify/client/input/ModKeyMappings.java
++++ b/src/main/java/dev/riftspotify/client/input/ModKeyMappings.java
+@@ -4,9 +4,11 @@
+ import dev.riftspotify.client.ui.SpotifySettingsScreen;
+ import net.minecraft.client.KeyMapping;
+ import net.minecraft.client.Minecraft;
+-import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+-import net.neoforged.neoforge.client.event.ClientTickEvent;
++import net.neoforged.bus.api.IEventBus;
+ import net.neoforged.bus.api.SubscribeEvent;
++import net.neoforged.neoforge.client.event.ClientTickEvent;
++import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
++import net.neoforged.neoforge.common.NeoForge;
+ import org.lwjgl.glfw.GLFW;
+ 
+ public final class ModKeyMappings {
+@@ -16,11 +18,13 @@
+ 
+     private ModKeyMappings() {}
+ 
+-    public static void register() {
+-        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.register(ModKeyMappings.class);
++    public static void register(IEventBus modEventBus) {
++        // RegisterKeyMappingsEvent is an IModBusEvent and must use the mod event bus.
++        modEventBus.addListener(ModKeyMappings::registerKeys);
++        // ClientTickEvent is a runtime event and belongs on the common NeoForge bus.
++        NeoForge.EVENT_BUS.register(ModKeyMappings.class);
+     }
+ 
+-    @SubscribeEvent
+     public static void registerKeys(RegisterKeyMappingsEvent event) {
+         event.register(OPEN_MENU);
+     }
+--- a/gradle.properties
++++ b/gradle.properties
+@@ -1,6 +1,6 @@
+ org.gradle.jvmargs=-Xmx2G
+ org.gradle.daemon=false
+ minecraft_version=1.21.1
+-neo_version=21.1.172
++neo_version=21.1.248
+ mod_id=riftspotify
+-mod_version=1.0.0
++mod_version=1.0.1
