@@ -3,7 +3,7 @@ package com.voidcanvas.spotifysync.client.screen.widget;
 import com.voidcanvas.spotifysync.client.render.UiRender;
 import com.voidcanvas.spotifysync.client.render.UiTheme;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
 
@@ -14,7 +14,7 @@ import java.util.function.Consumer;
  * Glass row with a mono label on the left and a lime pill switch on the right.
  * The row is the click target, which makes it comfortable at any GUI scale.
  */
-public final class VoidToggle extends AbstractWidget {
+public final class VoidToggle extends AbstractButton {
 
     public static final int HEIGHT = 26;
 

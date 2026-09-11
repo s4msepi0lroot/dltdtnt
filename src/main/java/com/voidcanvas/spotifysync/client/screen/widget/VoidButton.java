@@ -3,7 +3,7 @@ package com.voidcanvas.spotifysync.client.screen.widget;
 import com.voidcanvas.spotifysync.client.render.UiRender;
 import com.voidcanvas.spotifysync.client.render.UiTheme;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
 
@@ -15,7 +15,7 @@ import net.minecraft.network.chat.Component;
  * hover. The other styles are the white pill, the glass utility pill, a plain
  * ghost label and the destructive variant.</p>
  */
-public final class VoidButton extends AbstractWidget {
+public final class VoidButton extends AbstractButton {
 
     public enum Style {
         /** Lime pill, black text, neon glow. */

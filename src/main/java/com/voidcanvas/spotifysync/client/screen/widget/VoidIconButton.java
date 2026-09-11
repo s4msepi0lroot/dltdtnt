@@ -3,12 +3,12 @@ package com.voidcanvas.spotifysync.client.screen.widget;
 import com.voidcanvas.spotifysync.client.render.UiRender;
 import com.voidcanvas.spotifysync.client.render.UiTheme;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
 
 /** Round transport / utility button drawing a vector icon. */
-public final class VoidIconButton extends AbstractWidget {
+public final class VoidIconButton extends AbstractButton {
 
     public enum Icon {
         PLAY, PAUSE, NEXT, PREVIOUS, SHUFFLE, REPEAT, REPEAT_ONE, CLOSE, CHEVRON_DOWN, CHEVRON_UP, SPOTIFY
