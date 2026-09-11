@@ -24,6 +24,14 @@ public final class SyncConfig {
     private static SyncConfig instance;
 
     // ---------------------------------------------------------------- account
+    /**
+     * Where playback data comes from. {@link PlaybackSource#AUTO} prefers the
+     * Web API when a session is authorized and falls back to the local Windows
+     * media session, which needs no Premium subscription.
+     */
+    public PlaybackSource playbackSource = PlaybackSource.AUTO;
+    /** Substring matched against the media session app id (Windows source). */
+    public String localSessionFilter = "spotify";
     /** Spotify application client id (PKCE flow, no secret required). */
     public String clientId = "";
     /** Loopback port used for the OAuth redirect. */
@@ -119,6 +127,12 @@ public final class SyncConfig {
         }
         if (clientId == null) {
             clientId = "";
+        }
+        if (playbackSource == null) {
+            playbackSource = PlaybackSource.AUTO;
+        }
+        if (localSessionFilter == null) {
+            localSessionFilter = "spotify";
         }
         callbackPort = clamp(callbackPort, 1024, 65535);
         pollIntervalMs = clamp(pollIntervalMs, 700, 15000);

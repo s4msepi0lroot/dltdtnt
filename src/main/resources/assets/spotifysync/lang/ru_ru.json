@@ -7,19 +7,16 @@
   "key.spotifysync.play_pause": "Пуск / пауза",
   "key.spotifysync.next_track": "Следующий трек",
   "key.spotifysync.previous_track": "Предыдущий трек",
-
   "spotifysync.player.title": "Сейчас играет",
   "spotifysync.player.volume": "Громкость",
   "spotifysync.player.settings": "Настройки",
   "spotifysync.player.open_spotify": "Открыть в Spotify",
   "spotifysync.player.close": "Закрыть",
-
   "spotifysync.control.play_pause": "Пуск / пауза",
   "spotifysync.control.next": "Вперёд",
   "spotifysync.control.previous": "Назад",
   "spotifysync.control.shuffle": "Перемешать",
   "spotifysync.control.repeat": "Повтор",
-
   "spotifysync.settings.title": "Spotify Sync",
   "spotifysync.tab.account": "Аккаунт",
   "spotifysync.tab.player": "Плеер",
@@ -60,20 +57,23 @@
   "spotifysync.settings.ring_see_through": "Видно через блоки",
   "spotifysync.settings.done": "Готово",
   "spotifysync.settings.open_player": "Плеер",
-
   "spotifysync.lyrics_mode.off": "Выкл",
   "spotifysync.lyrics_mode.hud": "На экране",
   "spotifysync.lyrics_mode.ring3d": "3D вокруг игрока",
   "spotifysync.lyrics_mode.both": "Экран + 3D",
-
   "spotifysync.anchor.top_left": "Сверху слева",
   "spotifysync.anchor.top_center": "Сверху по центру",
   "spotifysync.anchor.top_right": "Сверху справа",
   "spotifysync.anchor.bottom_left": "Снизу слева",
   "spotifysync.anchor.bottom_center": "Снизу по центру",
   "spotifysync.anchor.bottom_right": "Снизу справа",
-
   "spotifysync.message.hud_on": "Мини-плеер включён",
   "spotifysync.message.hud_off": "Мини-плеер выключен",
-  "spotifysync.message.lyrics_mode": "Текст песни"
+  "spotifysync.message.lyrics_mode": "Текст песни",
+  "spotifysync.settings.source": "Источник данных",
+  "spotifysync.source.auto": "Авто",
+  "spotifysync.source.web_api": "Spotify Web API",
+  "spotifysync.source.windows_local": "Windows (локально)",
+  "spotifysync.settings.hide_when_idle": "Скрывать без музыки",
+  "spotifysync.settings.lyrics_on_screens": "Текст поверх экранов"
 }

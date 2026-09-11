@@ -25,9 +25,9 @@ public final class MiniPlayerHud implements LayeredDraw.Layer {
     public static final MiniPlayerHud INSTANCE = new MiniPlayerHud();
 
     /** Layout constants (GUI pixels). */
-    private static final int WIDTH = 168;
-    private static final int HEIGHT = 46;
-    private static final int PADDING = 6;
+    private static final int WIDTH = 196;
+    private static final int HEIGHT = 56;
+    private static final int PADDING = 8;
 
     private float appearAnimation;
     private float hoverAnimation;
@@ -159,37 +159,39 @@ public final class MiniPlayerHud implements LayeredDraw.Layer {
         if (!connected) {
             UiRender.text(graphics, "SPOTIFY SYNC", contentX, y + PADDING + 2,
                     UiTheme.withAlpha(UiTheme.TEXT_PRIMARY, alpha), false);
-            UiRender.accentRule(graphics, contentX, y + PADDING + 13, 24, alpha);
+            UiRender.accentRule(graphics, contentX, y + PADDING + 16, 24, alpha);
             UiRender.textScaled(graphics, UiRender.ellipsize("not connected", (int) (textWidth / 0.75f)),
-                    contentX, y + PADDING + 18, 0.75f, UiTheme.withAlpha(UiTheme.TEXT_MUTED, alpha), false);
+                    contentX, y + PADDING + 22, 0.75f, UiTheme.withAlpha(UiTheme.TEXT_MUTED, alpha), false);
             return;
         }
 
         if (!state.hasTrack()) {
             UiRender.text(graphics, "Nothing playing", contentX, y + PADDING + 2,
                     UiTheme.withAlpha(UiTheme.TEXT_PRIMARY, alpha), false);
-            UiRender.accentRule(graphics, contentX, y + PADDING + 13, 24, alpha);
-            UiRender.textScaled(graphics, manager.everSynced() ? "start playback on any device" : "waiting for spotify\u2026",
-                    contentX, y + PADDING + 18, 0.75f, UiTheme.withAlpha(UiTheme.TEXT_MUTED, alpha), false);
+            UiRender.accentRule(graphics, contentX, y + PADDING + 16, 24, alpha);
+            UiRender.textScaled(graphics, UiRender.ellipsize(manager.everSynced()
+                            ? "start playback in spotify" : "waiting for spotify\u2026",
+                            (int) (textWidth / 0.75f)),
+                    contentX, y + PADDING + 22, 0.75f, UiTheme.withAlpha(UiTheme.TEXT_MUTED, alpha), false);
             return;
         }
 
         // ---- title (marquee when too long) ---------------------------------
         String title = state.title();
         int titleOffset = UiRender.marqueeOffset(title, textWidth, 18);
-        graphics.enableScissor(contentX, y + PADDING, contentX + textWidth, y + PADDING + 12);
-        UiRender.text(graphics, title, contentX - titleOffset, y + PADDING + 1,
+        graphics.enableScissor(contentX, y + PADDING, contentX + textWidth, y + PADDING + 13);
+        UiRender.text(graphics, title, contentX - titleOffset, y + PADDING + 2,
                 UiTheme.withAlpha(UiTheme.TEXT_PRIMARY, alpha), false);
         graphics.disableScissor();
 
         // ---- artist --------------------------------------------------------
         String artist = state.artistLine();
         UiRender.textScaled(graphics, UiRender.ellipsize(artist, (int) (textWidth / 0.85f)),
-                contentX, y + PADDING + 13, 0.85f,
+                contentX, y + PADDING + 16, 0.85f,
                 UiTheme.withAlpha(UiTheme.TEXT_SECONDARY, alpha), false);
 
         // ---- equaliser + timecode -----------------------------------------
-        int rowY = y + HEIGHT - PADDING - 10;
+        int rowY = y + HEIGHT - PADDING - 9;
         UiRender.equalizer(graphics, contentX, rowY, 12, 7, UiTheme.accent(alpha), state.playing());
 
         long progress = state.interpolatedProgressMs();
@@ -202,7 +204,7 @@ public final class MiniPlayerHud implements LayeredDraw.Layer {
 
         // ---- progress bar --------------------------------------------------
         if (config.showProgressBar) {
-            int barY = y + HEIGHT - 4;
+            int barY = y + HEIGHT - 5;
             UiRender.progressBar(graphics, x + PADDING, barY, WIDTH - PADDING * 2, 2,
                     state.progressFraction(), alpha, false);
         }

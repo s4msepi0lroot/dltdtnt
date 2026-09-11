@@ -70,7 +70,30 @@ public final class CoverArtCache {
             return;
         }
         requestedUrl = url;
-        executor.execute(() -> download(url));
+        if (isLocalPath(url)) {
+            executor.execute(() -> readLocal(url));
+        } else {
+            executor.execute(() -> download(url));
+        }
+    }
+
+    private static boolean isLocalPath(String url) {
+        return url.startsWith("file:") || url.length() > 2 && url.charAt(1) == ':';
+    }
+
+    /** Loads artwork extracted from the Windows media session off disk. */
+    private void readLocal(String url) {
+        try {
+            String raw = url.startsWith("file:") ? url.substring("file:".length()) : url;
+            java.nio.file.Path path = java.nio.file.Paths.get(raw);
+            if (!java.nio.file.Files.isRegularFile(path)) {
+                return;
+            }
+            byte[] bytes = java.nio.file.Files.readAllBytes(path);
+            Minecraft.getInstance().execute(() -> upload(url, bytes));
+        } catch (Exception e) {
+            SpotifySync.LOGGER.debug("[Spotify Sync] local cover read failed", e);
+        }
     }
 
     private void download(String url) {

@@ -7,19 +7,16 @@
   "key.spotifysync.play_pause": "Play / pause",
   "key.spotifysync.next_track": "Next track",
   "key.spotifysync.previous_track": "Previous track",
-
   "spotifysync.player.title": "Now playing",
   "spotifysync.player.volume": "Volume",
   "spotifysync.player.settings": "Settings",
   "spotifysync.player.open_spotify": "Open in Spotify",
   "spotifysync.player.close": "Close",
-
   "spotifysync.control.play_pause": "Play / pause",
   "spotifysync.control.next": "Next",
   "spotifysync.control.previous": "Previous",
   "spotifysync.control.shuffle": "Shuffle",
   "spotifysync.control.repeat": "Repeat",
-
   "spotifysync.settings.title": "Spotify Sync",
   "spotifysync.tab.account": "Account",
   "spotifysync.tab.player": "Player",
@@ -60,20 +57,23 @@
   "spotifysync.settings.ring_see_through": "See through blocks",
   "spotifysync.settings.done": "Done",
   "spotifysync.settings.open_player": "Expanded player",
-
   "spotifysync.lyrics_mode.off": "Off",
   "spotifysync.lyrics_mode.hud": "Screen",
   "spotifysync.lyrics_mode.ring3d": "3D around player",
   "spotifysync.lyrics_mode.both": "Screen + 3D",
-
   "spotifysync.anchor.top_left": "Top left",
   "spotifysync.anchor.top_center": "Top center",
   "spotifysync.anchor.top_right": "Top right",
   "spotifysync.anchor.bottom_left": "Bottom left",
   "spotifysync.anchor.bottom_center": "Bottom center",
   "spotifysync.anchor.bottom_right": "Bottom right",
-
   "spotifysync.message.hud_on": "Mini player on",
   "spotifysync.message.hud_off": "Mini player off",
-  "spotifysync.message.lyrics_mode": "Lyrics"
+  "spotifysync.message.lyrics_mode": "Lyrics",
+  "spotifysync.settings.source": "Playback source",
+  "spotifysync.source.auto": "Auto",
+  "spotifysync.source.web_api": "Spotify Web API",
+  "spotifysync.source.windows_local": "Windows (local)",
+  "spotifysync.settings.hide_when_idle": "Hide when idle",
+  "spotifysync.settings.lyrics_on_screens": "Lyrics over screens"
 }

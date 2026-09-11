@@ -1,7 +1,9 @@
 package com.voidcanvas.spotifysync.client;
 
 import com.voidcanvas.spotifysync.SpotifySync;
+import com.voidcanvas.spotifysync.config.PlaybackSource;
 import com.voidcanvas.spotifysync.config.SyncConfig;
+import com.voidcanvas.spotifysync.local.WindowsMediaSource;
 import com.voidcanvas.spotifysync.lyrics.LyricsManager;
 import com.voidcanvas.spotifysync.spotify.PlaybackState;
 import com.voidcanvas.spotifysync.spotify.SpotifyApi;
@@ -16,6 +18,11 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Central client-side coordinator: owns the auth session, the polling loop,
  * the playback snapshot, the album art cache and the lyrics manager.
+ *
+ * <p>Two playback sources are supported. The Spotify Web API gives the richest
+ * data but requires Premium on the developer account that owns the client id.
+ * The Windows system media session needs no Premium at all and is used
+ * automatically when no Web API session is available.</p>
  */
 public final class SpotifyManager {
 
@@ -23,12 +30,12 @@ public final class SpotifyManager {
 
     private final SpotifyAuth auth = new SpotifyAuth();
     private final SpotifyApi api = new SpotifyApi(auth);
+    private final WindowsMediaSource local = new WindowsMediaSource();
     private final ExecutorService network;
     private final CoverArtCache covers;
     private final LyricsManager lyrics;
 
     private final AtomicReference<PlaybackState> state = new AtomicReference<>(PlaybackState.EMPTY);
-    private final AtomicBoolean polling = new AtomicBoolean(false);
     private final AtomicBoolean pollInFlight = new AtomicBoolean(false);
 
     private volatile long lastPollNano;
@@ -61,6 +68,10 @@ public final class SpotifyManager {
         return auth;
     }
 
+    public WindowsMediaSource localSource() {
+        return local;
+    }
+
     public CoverArtCache covers() {
         return covers;
     }
@@ -73,8 +84,53 @@ public final class SpotifyManager {
         return state.get();
     }
 
+    /** The source actually in use right now. */
+    public PlaybackSource effectiveSource() {
+        PlaybackSource configured = SyncConfig.get().playbackSource;
+        if (configured == PlaybackSource.WEB_API) {
+            return PlaybackSource.WEB_API;
+        }
+        if (configured == PlaybackSource.WINDOWS_LOCAL) {
+            return PlaybackSource.WINDOWS_LOCAL;
+        }
+        // AUTO: the Web API wins when authorized, otherwise fall back locally.
+        if (auth.isAuthorized()) {
+            return PlaybackSource.WEB_API;
+        }
+        return WindowsMediaSource.supported() ? PlaybackSource.WINDOWS_LOCAL : PlaybackSource.WEB_API;
+    }
+
+    public boolean usingLocalSource() {
+        return effectiveSource() == PlaybackSource.WINDOWS_LOCAL;
+    }
+
+    /** True when the active source can deliver playback data. */
     public boolean connected() {
+        if (usingLocalSource()) {
+            return WindowsMediaSource.supported();
+        }
         return auth.isAuthorized();
+    }
+
+    /** Human readable status shown in the settings screen. */
+    public String sourceStatus() {
+        if (usingLocalSource()) {
+            if (!WindowsMediaSource.supported()) {
+                return "local source needs Windows";
+            }
+            if (!local.lastError().isEmpty()) {
+                return local.lastError();
+            }
+            return local.available()
+                    ? "reading the local Spotify client"
+                    : "waiting for the Spotify desktop app";
+        }
+        return auth.isAuthorized() ? "web api session active" : "web api not connected";
+    }
+
+    /** Controls that only the Web API can perform. */
+    public boolean supportsExtendedControls() {
+        return !usingLocalSource();
     }
 
     public boolean stale() {
@@ -91,11 +147,14 @@ public final class SpotifyManager {
     /** Called every client tick. */
     public void tick() {
         SyncConfig config = SyncConfig.get();
-        if (!auth.isAuthorized() || !config.autoConnect) {
+        if (!config.autoConnect || !connected()) {
             return;
         }
         long now = System.nanoTime();
-        long intervalNano = Math.max(700, config.pollIntervalMs) * 1_000_000L;
+        // Spawning a PowerShell process is heavier than an HTTP call, so the
+        // local source is polled a bit less aggressively.
+        long floor = usingLocalSource() ? 1000L : 700L;
+        long intervalNano = Math.max(floor, config.pollIntervalMs) * 1_000_000L;
         if (now - lastPollNano < intervalNano) {
             return;
         }
@@ -103,17 +162,18 @@ public final class SpotifyManager {
         poll();
     }
 
-    /** Immediately schedules a playback poll. */
+    /** Immediately schedules a playback poll on the active source. */
     public void poll() {
-        if (!auth.isAuthorized()) {
+        if (!connected()) {
             return;
         }
         if (!pollInFlight.compareAndSet(false, true)) {
             return;
         }
+        boolean useLocal = usingLocalSource();
         network.execute(() -> {
             try {
-                PlaybackState fetched = api.fetchPlayback();
+                PlaybackState fetched = useLocal ? local.poll() : api.fetchPlayback();
                 if (fetched == null) {
                     return;
                 }
@@ -122,14 +182,10 @@ public final class SpotifyManager {
                 }
                 state.set(fetched);
                 lastSuccessNano = System.nanoTime();
-                if (fetched.hasTrack()) {
-                    if (fetched.coverUrl() != null) {
-                        covers.request(fetched.coverUrl());
-                    }
-                    if (SyncConfig.get().lyricsEnabled) {
-                        lyrics.onPlayback(fetched);
-                    }
-                } else {
+                if (fetched.hasTrack() && fetched.coverUrl() != null) {
+                    covers.request(fetched.coverUrl());
+                }
+                if (!fetched.hasTrack() || SyncConfig.get().lyricsEnabled) {
                     lyrics.onPlayback(fetched);
                 }
             } catch (Exception e) {
@@ -141,7 +197,6 @@ public final class SpotifyManager {
     }
 
     public void shutdown() {
-        polling.set(false);
         auth.stopCallbackServer();
         network.shutdownNow();
     }
@@ -152,8 +207,11 @@ public final class SpotifyManager {
         PlaybackState current = state.get();
         boolean wasPlaying = current.playing();
         applyOptimistic(current.withPlaying(!wasPlaying));
+        boolean useLocal = usingLocalSource();
         network.execute(() -> {
-            if (wasPlaying) {
+            if (useLocal) {
+                local.togglePlayPause();
+            } else if (wasPlaying) {
                 api.pause();
             } else {
                 api.play();
@@ -164,16 +222,26 @@ public final class SpotifyManager {
     }
 
     public void next() {
+        boolean useLocal = usingLocalSource();
         network.execute(() -> {
-            api.next();
+            if (useLocal) {
+                local.next();
+            } else {
+                api.next();
+            }
             sleep(450);
             poll();
         });
     }
 
     public void previous() {
+        boolean useLocal = usingLocalSource();
         network.execute(() -> {
-            api.previous();
+            if (useLocal) {
+                local.previous();
+            } else {
+                api.previous();
+            }
             sleep(450);
             poll();
         });
@@ -185,12 +253,7 @@ public final class SpotifyManager {
             return;
         }
         long target = (long) (Math.max(0f, Math.min(1f, fraction)) * current.durationMs());
-        applyOptimistic(current.withProgress(target));
-        network.execute(() -> {
-            api.seek(target);
-            sleep(400);
-            poll();
-        });
+        seekAbsolute(target);
     }
 
     public void seekRelative(long deltaMs) {
@@ -199,15 +262,28 @@ public final class SpotifyManager {
             return;
         }
         long target = Math.max(0L, Math.min(current.durationMs(), current.interpolatedProgressMs() + deltaMs));
-        applyOptimistic(current.withProgress(target));
+        seekAbsolute(target);
+    }
+
+    private void seekAbsolute(long target) {
+        applyOptimistic(state.get().withProgress(target));
+        boolean useLocal = usingLocalSource();
         network.execute(() -> {
-            api.seek(target);
+            if (useLocal) {
+                local.seek(target);
+            } else {
+                api.seek(target);
+            }
             sleep(400);
             poll();
         });
     }
 
     public void setVolume(int percent) {
+        if (usingLocalSource()) {
+            // The media session API exposes no volume channel.
+            return;
+        }
         PlaybackState current = state.get();
         applyOptimistic(current.withVolume(percent));
         network.execute(() -> {
@@ -218,6 +294,9 @@ public final class SpotifyManager {
     }
 
     public void toggleShuffle() {
+        if (usingLocalSource()) {
+            return;
+        }
         PlaybackState current = state.get();
         boolean target = !current.shuffle();
         applyOptimistic(current.withShuffle(target));
@@ -229,6 +308,9 @@ public final class SpotifyManager {
     }
 
     public void cycleRepeat() {
+        if (usingLocalSource()) {
+            return;
+        }
         PlaybackState current = state.get();
         String target = switch (current.repeatState()) {
             case "off" -> "context";

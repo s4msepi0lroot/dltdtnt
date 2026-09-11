@@ -22,18 +22,24 @@ import java.util.List;
 /**
  * The expanded player.
  *
- * <p>Opened by clicking the mini player (or with the dedicated key). Layout
- * follows the design system: one large near-black card on a black scrim, a
- * full-bleed cover on the left, display-scale title, an accent hairline, a
- * scrubbable progress bar, transport controls, a volume slider, a row of blue
- * glass metadata tiles and a live lyrics column.</p>
+ * <p>Opened by clicking the mini player (or with the dedicated key). The layout
+ * uses a strict grid so nothing collides: a 132px cover column on the left, a
+ * text/controls column on the right, and fixed bands for the progress bar,
+ * transport row, volume, metadata tiles and footer.</p>
  */
 public final class ExpandedPlayerScreen extends Screen {
 
-    private static final int CARD_WIDTH = 340;
-    private static final int CARD_HEIGHT = 196;
-    private static final int COVER = 108;
-    private static final int PADDING = 14;
+    private static final int CARD_WIDTH = 432;
+    private static final int CARD_HEIGHT = 268;
+    private static final int COVER = 132;
+    private static final int PADDING = 18;
+    private static final int BUTTON_HEIGHT = 20;
+
+    /** Vertical bands, relative to the card top. */
+    private static final int BAND_PROGRESS = 108;
+    private static final int BAND_CONTROLS = 132;
+    private static final int BAND_VOLUME = 166;
+    private static final int BAND_TILES = 198;
 
     private int cardX;
     private int cardY;
@@ -55,54 +61,71 @@ public final class ExpandedPlayerScreen extends Screen {
     protected void init() {
         SpotifyManager manager = SpotifyManager.get();
         cardX = (width - CARD_WIDTH) / 2;
-        cardY = (height - CARD_HEIGHT) / 2;
+        cardY = Math.max(4, (height - CARD_HEIGHT) / 2);
 
         int contentX = cardX + PADDING + COVER + PADDING;
         int contentRight = cardX + CARD_WIDTH - PADDING;
         progressX = contentX;
-        progressY = cardY + 96;
+        progressY = cardY + BAND_PROGRESS;
         progressWidth = contentRight - contentX;
 
-        int controlsY = cardY + 112;
-        int buttonSize = 22;
+        boolean extended = manager.supportsExtendedControls();
 
-        addRenderableWidget(new VoidIconButton(contentX, controlsY, buttonSize,
+        // ---- transport row ------------------------------------------------
+        int size = 26;
+        int gap = 8;
+        int controlsY = cardY + BAND_CONTROLS;
+        int cursor = contentX;
+
+        addRenderableWidget(new VoidIconButton(cursor, controlsY + 2, size - 4,
                 VoidIconButton.Icon.PREVIOUS, Component.translatable("spotifysync.control.previous"),
                 manager::previous));
+        cursor += size - 4 + gap;
 
-        playPause = addRenderableWidget(new VoidIconButton(contentX + buttonSize + 6, controlsY - 2, buttonSize + 4,
+        playPause = addRenderableWidget(new VoidIconButton(cursor, controlsY, size,
                 manager.state().playing() ? VoidIconButton.Icon.PAUSE : VoidIconButton.Icon.PLAY,
                 Component.translatable("spotifysync.control.play_pause"),
                 manager::togglePlayPause).filled());
+        cursor += size + gap;
 
-        addRenderableWidget(new VoidIconButton(contentX + (buttonSize + 6) * 2 + 4, controlsY, buttonSize,
+        addRenderableWidget(new VoidIconButton(cursor, controlsY + 2, size - 4,
                 VoidIconButton.Icon.NEXT, Component.translatable("spotifysync.control.next"),
                 manager::next));
+        cursor += size - 4 + gap * 2;
 
-        shuffle = addRenderableWidget(new VoidIconButton(contentX + (buttonSize + 6) * 3 + 10, controlsY, buttonSize,
+        shuffle = addRenderableWidget(new VoidIconButton(cursor, controlsY + 2, size - 4,
                 VoidIconButton.Icon.SHUFFLE, Component.translatable("spotifysync.control.shuffle"),
                 manager::toggleShuffle));
+        cursor += size - 4 + gap;
 
-        repeat = addRenderableWidget(new VoidIconButton(contentX + (buttonSize + 6) * 4 + 10, controlsY, buttonSize,
+        repeat = addRenderableWidget(new VoidIconButton(cursor, controlsY + 2, size - 4,
                 VoidIconButton.Icon.REPEAT, Component.translatable("spotifysync.control.repeat"),
                 manager::cycleRepeat));
 
-        int volumeWidth = 96;
-        addRenderableWidget(new VoidSlider(contentRight - volumeWidth, cardY + 136, volumeWidth,
+        // Shuffle / repeat / volume only exist on the Web API source.
+        shuffle.active = extended;
+        repeat.active = extended;
+
+        // ---- volume -------------------------------------------------------
+        int volumeWidth = 140;
+        VoidSlider volume = new VoidSlider(contentRight - volumeWidth, cardY + BAND_VOLUME, volumeWidth,
                 Component.translatable("spotifysync.player.volume"), 0, 100, 1,
                 () -> {
-                    int volume = SpotifyManager.get().state().volumePercent();
-                    return volume < 0 ? 100 : volume;
+                    int level = SpotifyManager.get().state().volumePercent();
+                    return level < 0 ? 100 : level;
                 },
                 value -> SpotifyManager.get().setVolume((int) Math.round(value)),
-                value -> String.valueOf(Math.round(value)) + "%"));
+                value -> Math.round(value) + "%");
+        volume.active = extended;
+        addRenderableWidget(volume);
 
-        int footerY = cardY + CARD_HEIGHT - PADDING - 18;
-        addRenderableWidget(new VoidButton(cardX + PADDING, footerY, 78, 18,
+        // ---- footer -------------------------------------------------------
+        int footerY = cardY + CARD_HEIGHT - PADDING - BUTTON_HEIGHT;
+        addRenderableWidget(new VoidButton(cardX + PADDING, footerY, 96, BUTTON_HEIGHT,
                 Component.translatable("spotifysync.player.settings"), VoidButton.Style.UTILITY,
                 () -> minecraft.setScreen(new SpotifySettingsScreen(this))));
 
-        addRenderableWidget(new VoidButton(cardX + PADDING + 84, footerY, 96, 18,
+        addRenderableWidget(new VoidButton(cardX + PADDING + 96 + 10, footerY, 118, BUTTON_HEIGHT,
                 Component.translatable("spotifysync.player.open_spotify"), VoidButton.Style.SECONDARY,
                 () -> {
                     String url = SpotifyManager.get().state().trackUrl();
@@ -111,7 +134,7 @@ public final class ExpandedPlayerScreen extends Screen {
                     }
                 }));
 
-        addRenderableWidget(new VoidButton(contentRight - 70, footerY, 70, 18,
+        addRenderableWidget(new VoidButton(contentRight - 80, footerY, 80, BUTTON_HEIGHT,
                 Component.translatable("spotifysync.player.close"), VoidButton.Style.GHOST,
                 this::onClose));
     }
@@ -122,7 +145,7 @@ public final class ExpandedPlayerScreen extends Screen {
         SpotifyManager manager = SpotifyManager.get();
         PlaybackState state = manager.state();
 
-        super.render(graphics, mouseX, mouseY, partialTick);
+        renderBackground(graphics, mouseX, mouseY, partialTick);
 
         // Keep the transport icons in sync with the live state.
         if (playPause != null) {
@@ -138,8 +161,7 @@ public final class ExpandedPlayerScreen extends Screen {
         }
 
         drawCard(graphics, state, mouseX, mouseY);
-        // Widgets are drawn by super.render() first, so re-render them on top
-        // of the card surface.
+        // The card is painted first, the widgets sit on top of it.
         for (var widget : renderables) {
             widget.render(graphics, mouseX, mouseY, partialTick);
         }
@@ -172,7 +194,7 @@ public final class ExpandedPlayerScreen extends Screen {
         ResourceLocation cover = manager.covers().texture();
         if (cover != null && state.hasTrack()) {
             UiRender.image(graphics, cover, coverX, coverY, COVER, COVER, openAnimation);
-            UiRender.fadeToBlack(graphics, coverX, coverY + COVER - 18, COVER, 18, 0.75f);
+            UiRender.fadeToBlack(graphics, coverX, coverY + COVER - 20, COVER, 20, 0.75f);
             UiRender.roundedBorder(graphics, coverX, coverY, COVER, COVER, UiTheme.RADIUS_CONTROL,
                     UiTheme.withAlpha(UiTheme.BORDER, 0.9f));
         } else {
@@ -186,59 +208,59 @@ public final class ExpandedPlayerScreen extends Screen {
         if (!manager.connected()) {
             UiRender.textScaled(graphics, "Not connected", contentX, cardY + PADDING, 1.6f,
                     UiTheme.TEXT_PRIMARY, false);
-            UiRender.accentRule(graphics, contentX, cardY + PADDING + 20, 40, 1f);
-            UiRender.textScaled(graphics, "open settings and paste your client id",
-                    contentX, cardY + PADDING + 28, 0.85f, UiTheme.TEXT_SECONDARY, false);
+            UiRender.accentRule(graphics, contentX, cardY + PADDING + 24, 40, 1f);
+            UiRender.textScaled(graphics, "open settings and pick a playback source",
+                    contentX, cardY + PADDING + 34, 0.85f, UiTheme.TEXT_SECONDARY, false);
             return;
         }
 
-        // ---- label / eyebrow ------------------------------------------------
+        // ---- eyebrow --------------------------------------------------------
         String eyebrow = state.episode() ? "NOW PLAYING \u00b7 PODCAST" : "NOW PLAYING";
         UiRender.textScaled(graphics, eyebrow, contentX, cardY + PADDING, 0.75f,
                 UiTheme.TEXT_MUTED, false);
 
         // ---- display title --------------------------------------------------
         String title = state.hasTrack() ? state.title() : "Nothing playing";
-        float titleScale = 1.55f;
+        float titleScale = 1.6f;
         String fittedTitle = UiRender.ellipsize(title, (int) (contentWidth / titleScale));
-        UiRender.textScaled(graphics, fittedTitle, contentX, cardY + PADDING + 10, titleScale,
+        UiRender.textScaled(graphics, fittedTitle, contentX, cardY + PADDING + 14, titleScale,
                 UiTheme.TEXT_PRIMARY, false);
 
-        UiRender.accentRule(graphics, contentX, cardY + PADDING + 30, 34, 0.9f);
+        UiRender.accentRule(graphics, contentX, cardY + PADDING + 38, 34, 0.9f);
 
         // ---- artist + album -------------------------------------------------
         UiRender.text(graphics, UiRender.ellipsize(state.artistLine(), contentWidth),
-                contentX, cardY + PADDING + 38, UiTheme.TEXT_SECONDARY, false);
+                contentX, cardY + PADDING + 48, UiTheme.TEXT_SECONDARY, false);
         UiRender.textScaled(graphics, UiRender.ellipsize(state.album(), (int) (contentWidth / 0.85f)),
-                contentX, cardY + PADDING + 50, 0.85f, UiTheme.TEXT_MUTED, false);
+                contentX, cardY + PADDING + 64, 0.85f, UiTheme.TEXT_MUTED, false);
 
         // ---- progress -------------------------------------------------------
         long progress = state.interpolatedProgressMs();
         boolean hoverProgress = isOverProgress(mouseX, mouseY);
         UiRender.progressBar(graphics, progressX, progressY, progressWidth, hoverProgress ? 4 : 3,
                 state.progressFraction(), 1f, true);
-        UiRender.textScaled(graphics, PlaybackState.formatTime(progress), progressX, progressY + 7, 0.8f,
+        UiRender.textScaled(graphics, PlaybackState.formatTime(progress), progressX, progressY + 9, 0.8f,
                 UiTheme.TEXT_SECONDARY, false);
         String duration = PlaybackState.formatTime(state.durationMs());
         UiRender.textScaled(graphics, duration,
-                contentRight - UiRender.font().width(duration) * 0.8f, progressY + 7, 0.8f,
+                contentRight - UiRender.font().width(duration) * 0.8f, progressY + 9, 0.8f,
                 UiTheme.TEXT_MUTED, false);
         if (hoverProgress && state.durationMs() > 0) {
             float fraction = (float) (mouseX - progressX) / (float) progressWidth;
             String preview = PlaybackState.formatTime((long) (fraction * state.durationMs()));
-            UiRender.textScaledCentered(graphics, preview, mouseX, progressY - 12, 0.8f,
+            UiRender.textScaledCentered(graphics, preview, mouseX, progressY - 14, 0.8f,
                     UiTheme.accent(), true);
         }
 
         // ---- glass metadata tiles ------------------------------------------
-        int tileY = cardY + 158;
-        int tileHeight = 16;
-        int tileGap = 5;
+        int tileY = cardY + BAND_TILES;
+        int tileHeight = 22;
+        int tileGap = 8;
         int tileWidth = (contentWidth - tileGap * 2) / 3;
-        drawTile(graphics, contentX, tileY, tileWidth, tileHeight, "DEVICE",
+        drawTile(graphics, contentX, tileY, tileWidth, tileHeight, "SOURCE",
+                manager.usingLocalSource() ? "WINDOWS" : "WEB API");
+        drawTile(graphics, contentX + tileWidth + tileGap, tileY, tileWidth, tileHeight, "DEVICE",
                 state.deviceName().isEmpty() ? "\u2014" : state.deviceName());
-        drawTile(graphics, contentX + tileWidth + tileGap, tileY, tileWidth, tileHeight, "REPEAT",
-                state.repeatState().toUpperCase());
         String lyricsLabel;
         TrackLyrics lyrics = manager.lyrics().lyrics();
         if (manager.lyrics().loading()) {
@@ -252,18 +274,18 @@ public final class ExpandedPlayerScreen extends Screen {
                 "LYRICS", lyricsLabel);
 
         // ---- lyrics preview under the cover ---------------------------------
-        drawLyricsPreview(graphics, coverX, cardY + PADDING + COVER + 8, COVER, state, lyrics);
+        drawLyricsPreview(graphics, coverX, coverY + COVER + 12, COVER, state, lyrics);
 
         // ---- status dot ------------------------------------------------------
         int dotColor = manager.stale() ? 0xFFFF5A5A : UiTheme.ACCENT_SECONDARY;
-        UiRender.roundedRect(graphics, contentRight - 6, cardY + PADDING + 1, 4, 4, 2, dotColor);
+        UiRender.roundedRect(graphics, contentRight - 5, cardY + PADDING + 1, 4, 4, 2, dotColor);
     }
 
     private void drawTile(GuiGraphics graphics, int x, int y, int width, int height, String label, String value) {
         UiRender.glassTile(graphics, x, y, width, height, 1f);
-        UiRender.textScaled(graphics, label, x + 4, y + 2, 0.6f, UiTheme.TEXT_SECONDARY, false);
-        UiRender.textScaled(graphics, UiRender.ellipsize(value, (int) ((width - 8) / 0.75f)),
-                x + 4, y + 8, 0.75f, UiTheme.TEXT_PRIMARY, false);
+        UiRender.textScaled(graphics, label, x + 6, y + 4, 0.6f, UiTheme.TEXT_SECONDARY, false);
+        UiRender.textScaled(graphics, UiRender.ellipsize(value, (int) ((width - 12) / 0.75f)),
+                x + 6, y + 12, 0.75f, UiTheme.TEXT_PRIMARY, false);
     }
 
     private void drawLyricsPreview(GuiGraphics graphics, int x, int y, int width,
@@ -279,7 +301,7 @@ public final class ExpandedPlayerScreen extends Screen {
         if (active < 0) {
             active = 0;
         }
-        for (int offset = 0; offset < 3; offset++) {
+        for (int offset = 0; offset < 4; offset++) {
             int index = active + offset;
             if (index >= lines.size()) {
                 break;
@@ -289,15 +311,15 @@ public final class ExpandedPlayerScreen extends Screen {
                 continue;
             }
             int color = offset == 0 ? UiTheme.TEXT_PRIMARY
-                    : UiTheme.withAlpha(UiTheme.TEXT_MUTED, 0.8f - offset * 0.2f);
+                    : UiTheme.withAlpha(UiTheme.TEXT_MUTED, 0.85f - offset * 0.18f);
             UiRender.textScaled(graphics, UiRender.ellipsize(text, (int) (width / 0.7f)),
-                    x, y + offset * 8, 0.7f, color, false);
+                    x, y + offset * 10, 0.7f, color, false);
         }
     }
 
     private boolean isOverProgress(int mouseX, int mouseY) {
         return mouseX >= progressX && mouseX <= progressX + progressWidth
-                && mouseY >= progressY - 4 && mouseY <= progressY + 7;
+                && mouseY >= progressY - 5 && mouseY <= progressY + 8;
     }
 
     @Override
