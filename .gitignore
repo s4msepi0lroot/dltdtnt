@@ -1,8 +1,25 @@
+# Gradle
 .gradle/
 build/
 out/
 run/
+runClient/
+run-data/
+
+# IDE
 .idea/
-.vscode/
 *.iml
+*.ipr
+*.iws
+.vscode/
+.eclipse/
+.settings/
+.classpath
+.project
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Local secrets (never commit your Spotify client id / tokens)
+spotifysync-auth.json

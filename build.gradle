@@ -1,42 +1,38 @@
 plugins {
-    id 'java-library'
-    id 'net.neoforged.moddev' version '2.0.107'
+    id 'java'
+    id 'idea'
+    id 'eclipse'
+    id 'net.neoforged.moddev' version '2.0.78'
 }
 
-def minecraft_version = providers.gradleProperty('minecraft_version').get()
-def neo_version = providers.gradleProperty('neo_version').get()
-def mod_id = providers.gradleProperty('mod_id').get()
+version = mod_version
+group = mod_group_id
 
-group = 'dev.riftspotify'
-version = providers.gradleProperty('mod_version').get()
+base {
+    archivesName = mod_id
+}
 
 java {
-    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
     withSourcesJar()
 }
 
 neoForge {
-    version = neo_version
+    version = project.neo_version
 
     runs {
-        configureEach {
-            systemProperty 'forge.logging.markers', 'REGISTRIES'
-            systemProperty 'forge.logging.console.level', 'debug'
-        }
         client {
             client()
-        }
-        server {
-            server()
-        }
-        data {
-            data()
+            systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
+            gameDirectory = file('run')
         }
     }
 
     mods {
         "${mod_id}" {
-            sourceSet sourceSets.main
+            sourceSet(sourceSets.main)
         }
     }
 }
@@ -45,21 +41,47 @@ repositories {
     mavenCentral()
 }
 
-sourceSets.main.resources { srcDir 'src/generated/resources' }
+dependencies {
+    // No extra runtime dependencies: the mod only uses the JDK 21 HTTP client,
+    // the JDK http server (for the local OAuth callback) and GSON, which is
+    // already shipped with Minecraft.
+}
 
-jar {
-    manifest {
-        attributes([
-            'Specification-Title': 'Rift Spotify',
-            'Specification-Vendor': 'Rift Spotify',
-            'Specification-Version': '1',
-            'Implementation-Title': project.name,
-            'Implementation-Version': project.version,
-            'Implementation-Vendor': 'Rift Spotify'
-        ])
+tasks.withType(ProcessResources).configureEach {
+    def replaceProperties = [
+            minecraft_version      : minecraft_version,
+            minecraft_version_range: minecraft_version_range,
+            neo_version            : neo_version,
+            neo_version_range      : neo_version_range,
+            loader_version_range   : loader_version_range,
+            mod_id                 : mod_id,
+            mod_name               : mod_name,
+            mod_license            : mod_license,
+            mod_version            : mod_version,
+            mod_authors            : mod_authors,
+            mod_description        : mod_description
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['META-INF/neoforge.mods.toml']) {
+        expand replaceProperties
     }
 }
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+    options.release = 21
+}
+
+jar {
+    manifest {
+        attributes([
+                'Specification-Title'     : mod_id,
+                'Specification-Vendor'    : mod_authors,
+                'Specification-Version'   : '1',
+                'Implementation-Title'    : mod_name,
+                'Implementation-Version'  : mod_version,
+                'Implementation-Vendor'   : mod_authors
+        ])
+    }
 }
