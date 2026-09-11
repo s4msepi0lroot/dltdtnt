@@ -1,10 +1,12 @@
-import org.gradle.api.initialization.resolve.RepositoriesMode\n\npluginManagement {
+import org.gradle.api.initialization.resolve.RepositoriesMode
+
+pluginManagement {
     repositories {
         gradlePluginPortal()
         maven { url = 'https://maven.neoforged.net/releases' }
-        maven { url = 'https://maven.neoforged.net/releases' }
     }
 }
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
@@ -12,4 +14,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
+
 rootProject.name = 'rift-spotify'
