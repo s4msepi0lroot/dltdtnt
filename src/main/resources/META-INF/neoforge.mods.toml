@@ -1,0 +1,25 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="MIT"
+showAsResourcePack=false
+
+[[mods]]
+modId="riftspotify"
+version="${file.jarVersion}"
+displayName="Rift Spotify"
+authors="Rift Spotify"
+description="A client-side Spotify companion with synced player HUD and lyrics."
+
+[[dependencies.riftspotify]]
+modId="neoforge"
+type="required"
+versionRange="[21.1,)"
+ordering="NONE"
+side="CLIENT"
+
+[[dependencies.riftspotify]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1,1.22)"
+ordering="NONE"
+side="CLIENT"
