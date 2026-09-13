@@ -1,8 +1,6 @@
 plugins {
-    id 'java'
-    id 'idea'
-    id 'eclipse'
-    id 'net.neoforged.moddev' version '2.0.78'
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.144'
 }
 
 version = mod_version
@@ -16,7 +14,38 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
     }
-    withSourcesJar()
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        // JEI API lives here
+        name = "Jared's maven"
+        url = "https://maven.blamejared.com/"
+    }
+    maven {
+        // fallback mirror for the JEI API
+        name = "ModMaven"
+        url = "https://modmaven.dev"
+    }
+}
+
+// Recipe viewer support. The JEI API is compile only - the mod runs fine without
+// JEI installed, and EMI shows the same recipes through its JEI compatibility layer.
+// Build completely without it (no extra downloads):
+//   ./gradlew build -Pjei_support=false
+def jeiSupport = Boolean.parseBoolean((project.findProperty('jei_support') ?: 'true').toString())
+
+dependencies {
+    if (jeiSupport) {
+        compileOnly "mezz.jei:jei-1.21.1-common-api:${jei_version}"
+    }
+}
+
+if (!jeiSupport) {
+    sourceSets.main.java {
+        exclude 'com/s4fmer/boozecraft/compat/jei/**'
+    }
 }
 
 neoForge {
@@ -25,46 +54,17 @@ neoForge {
     runs {
         client {
             client()
-            systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
-            gameDirectory = file('run')
+        }
+        server {
+            server()
+            programArgument '--nogui'
         }
     }
 
     mods {
         "${mod_id}" {
-            sourceSet(sourceSets.main)
+            sourceSet sourceSets.main
         }
-    }
-}
-
-repositories {
-    mavenCentral()
-}
-
-dependencies {
-    // No extra runtime dependencies: the mod only uses the JDK 21 HTTP client,
-    // the JDK http server (for the local OAuth callback) and GSON, which is
-    // already shipped with Minecraft.
-}
-
-tasks.withType(ProcessResources).configureEach {
-    def replaceProperties = [
-            minecraft_version      : minecraft_version,
-            minecraft_version_range: minecraft_version_range,
-            neo_version            : neo_version,
-            neo_version_range      : neo_version_range,
-            loader_version_range   : loader_version_range,
-            mod_id                 : mod_id,
-            mod_name               : mod_name,
-            mod_license            : mod_license,
-            mod_version            : mod_version,
-            mod_authors            : mod_authors,
-            mod_description        : mod_description
-    ]
-    inputs.properties replaceProperties
-
-    filesMatching(['META-INF/neoforge.mods.toml']) {
-        expand replaceProperties
     }
 }
 
@@ -73,7 +73,7 @@ tasks.withType(JavaCompile).configureEach {
     options.release = 21
 }
 
-jar {
+tasks.named('jar', Jar).configure {
     manifest {
         attributes([
                 'Specification-Title'     : mod_id,

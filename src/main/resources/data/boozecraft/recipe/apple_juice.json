@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "minecraft:apple"
+    },
+    {
+      "item": "minecraft:apple"
+    },
+    {
+      "item": "minecraft:sugar"
+    },
+    {
+      "item": "boozecraft:glass_cup"
+    },
+    {
+      "item": "boozecraft:glass_cup"
+    }
+  ],
+  "result": {
+    "id": "boozecraft:apple_juice",
+    "count": 2
+  }
+}

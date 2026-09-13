@@ -1,25 +1,9 @@
-# Gradle
-.gradle/
 build/
-out/
+.gradle/
+.gradle-dist/
 run/
-runClient/
-run-data/
-
-# IDE
-.idea/
+runs/
 *.iml
-*.ipr
-*.iws
+.idea/
 .vscode/
-.eclipse/
-.settings/
-.classpath
-.project
-
-# OS
 .DS_Store
-Thumbs.db
-
-# Local secrets (never commit your Spotify client id / tokens)
-spotifysync-auth.json

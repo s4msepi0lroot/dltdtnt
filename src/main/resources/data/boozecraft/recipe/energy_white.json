@@ -1,0 +1,28 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "boozecraft:energy_syrup"
+    },
+    {
+      "item": "minecraft:sugar"
+    },
+    {
+      "item": "minecraft:glowstone_dust"
+    },
+    {
+      "item": "boozecraft:empty_can"
+    },
+    {
+      "item": "boozecraft:empty_can"
+    },
+    {
+      "item": "minecraft:water_bucket"
+    }
+  ],
+  "result": {
+    "id": "boozecraft:energy_white",
+    "count": 2
+  }
+}

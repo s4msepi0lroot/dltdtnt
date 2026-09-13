@@ -1,0 +1,22 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "minecraft:sugar"
+    },
+    {
+      "item": "minecraft:sugar"
+    },
+    {
+      "item": "minecraft:glow_berries"
+    },
+    {
+      "item": "boozecraft:coffee_beans"
+    }
+  ],
+  "result": {
+    "id": "boozecraft:energy_syrup",
+    "count": 2
+  }
+}

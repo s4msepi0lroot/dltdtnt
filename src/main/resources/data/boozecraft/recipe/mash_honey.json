@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "minecraft:honey_bottle"
+    },
+    {
+      "item": "minecraft:sugar"
+    },
+    {
+      "item": "boozecraft:yeast"
+    }
+  ],
+  "result": {
+    "id": "boozecraft:mash_honey",
+    "count": 1
+  }
+}
